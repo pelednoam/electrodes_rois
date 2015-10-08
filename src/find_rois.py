@@ -7,6 +7,7 @@ from collections import Counter
 from scipy.spatial.distance import cdist
 import mne
 from mne.surface import read_surface
+from itertools import product
 
 def identify_roi_from_atlas(elecs_names, elecs_pos, approx=4, atlas=None, subjects_dir=None,
     subject=None):
@@ -85,7 +86,6 @@ def identify_roi_from_atlas_per_electrode(pos, pia, len_lh_pia, parcels, lut, as
     verts, _ = read_surface(surf_fname)
     closest_vert_pos = verts[closest_vert]
     bins = calc_neighbors(closest_vert_pos, approx, True)
-    bins_centers = calc_neighbors(closest_vert_pos, approx, False)
 
     excludes=['white', 'WM', 'Unknown', 'White', 'unknown', 'Cerebral-Cortex']
     compiled_excludes = re.compile('|'.join(excludes))
@@ -97,7 +97,7 @@ def identify_roi_from_atlas_per_electrode(pos, pia, len_lh_pia, parcels, lut, as
             continue
         intersect_verts = np.intersect1d(parcel.vertices, radius_label.vertices)
         if len(intersect_verts)>0:
-            hits = calc_hits_in_neighbors(pos, verts[intersect_verts], bins, bins_centers, approx)
+            hits = calc_hits_in_neighbors(pos, verts[intersect_verts], bins, approx)
             regions_hits.append(hits)
             #force convert from unicode
             regions.append(str(parcel.name))
@@ -116,17 +116,20 @@ def identify_roi_from_atlas_per_electrode(pos, pia, len_lh_pia, parcels, lut, as
 
 def calc_hits_in_neighbors(pos, points, neighb, bins_centers, approx):
     bins = [np.sort(np.unique(neighb[:, idim])) for idim in range(points.shape[1])]
-    hist, binedges = np.histogramdd(points, bins=bins, normed=False)
-    dists = cdist(bins_centers, [pos])
-    r = int(round(len(bins_centers)**(1./3)))
-    dists = dists.reshape((r,r,r))
-    inds = np.where((hist>0) & (dists<approx))
-
-    from itertools import product
-    # indices = product([range(len(binedges[d])) for d in len(bins_centers)])
-    # for i,j,k in indices:
-    #     if cdist([bins_centers[]])
-    return len(inds[0])
+    hist, bin_edges = np.histogramdd(points, bins=bins, normed=False)
+    # dists = cdist(bins_centers, [pos])
+    # r = int(round(len(bins_centers)**(1./3)))
+    # dists = dists.reshape((r,r,r))
+    # inds = np.where((hist>0) & (dists<approx))
+    # hits = len(inds[0])
+    hist_bin_centers_list = [bin_edges[d][:-1] + (bin_edges[d][1:] - bin_edges[d][:-1])/2. for d in range(len(bin_edges))]
+    indices3d = product(*[range(len(bin_edges[d])-1) for d in range(len(bin_edges))])
+    ret_indices = []
+    for i,j,k in indices3d:
+        bin_center = [bin[ind] for bin,ind in zip(hist_bin_centers_list, (i, j, k))]
+        if hist[i,j,k]>0 and cdist([pos], [bin_center])[0] < approx:
+            ret_indices.append((i,j,k))
+    return len(ret_indices)
 
 
 def identify_roi_from_aparc(pos, lut, aseg_header, approx=4, subjects_dir=None, subject=None,
@@ -245,23 +248,6 @@ def calc_neighbors(pos, approx, calc_bins=False):
     return pos + neighb
 
 
-# def check_dists(neighb, r):
-#     dd = neighb.reshape((r,r,r,3)).transpose([1,0,2,3])
-#     d = np.zeros((r,r,r))
-#     for x in range(dd.shape[0]):
-#         for y in range(dd.shape[1]):
-#             for z in range(dd.shape[2]):
-#                 d[x,y,z] = cdist([dd[x,y,z]], [[0,0,0]])[0]
-#
-#     dd2 = neighb.reshape((r,r,r,3))
-#     d2 = np.zeros((r,r,r))
-#     for x in range(dd2.shape[0]):
-#         for y in range(dd2.shape[1]):
-#             for z in range(dd2.shape[2]):
-#                 d2[x,y,z] = cdist([dd2[x,y,z]], [[0,0,0]])[0]
-#
-
-
 def get_electrodes(subject, elecs_dir='', delimiter=','):
     if elecs_dir=='':
         elecs_dir = get_electrodes_dir()
@@ -324,7 +310,8 @@ def insert_values(elecs, header, rois_arr, rois_names, probs_names):
 if __name__ == '__main__':
     subject = 'mg63'
     subject = 'mg78'
-    subjects_dir = '/home/noam/subjects' # os.environ.get('SUBJECTS_DIR')
+    subjects_dir = [s for s in ['/home/noam/subjects', '/homes/5/npeled/space3/subjects'] if os.path.isdir(s)][0]
+    os.environ['FREESURFER_HOME'] = '/usr/local/freesurfer/stable5_3_0'
     parcellation = 'aparc250'
     error_radius = 4
 
