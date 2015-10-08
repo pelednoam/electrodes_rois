@@ -121,6 +121,15 @@ def calc_hits_in_neighbors(pos, points, neighb, bins_centers, approx):
     r = int(round(len(bins_centers)**(1./3)))
     dists = dists.reshape((r,r,r))
     inds = np.where((hist>0) & (dists<approx))
+
+    indices = []
+    for i in range(r):
+        for j in range(r):
+            for k in range(r):
+                dist = cdist([pos], [bins_centers[i,j,k]])
+                if dist < approx and hist[i,j,k] > 0:
+                    indices.append((i,j,k))
+
     return len(inds[0])
 
 
