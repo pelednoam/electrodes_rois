@@ -122,14 +122,10 @@ def calc_hits_in_neighbors(pos, points, neighb, bins_centers, approx):
     dists = dists.reshape((r,r,r))
     inds = np.where((hist>0) & (dists<approx))
 
-    indices = []
-    for i in range(r):
-        for j in range(r):
-            for k in range(r):
-                dist = cdist([pos], [bins_centers[i,j,k]])
-                if dist < approx and hist[i,j,k] > 0:
-                    indices.append((i,j,k))
-
+    from itertools import product
+    # indices = product([range(len(binedges[d])) for d in len(bins_centers)])
+    # for i,j,k in indices:
+    #     if cdist([bins_centers[]])
     return len(inds[0])
 
 
@@ -249,21 +245,21 @@ def calc_neighbors(pos, approx, calc_bins=False):
     return pos + neighb
 
 
-def check_dists(neighb, r):
-    dd = neighb.reshape((r,r,r,3)).transpose([1,0,2,3])
-    d = np.zeros((r,r,r))
-    for x in range(dd.shape[0]):
-        for y in range(dd.shape[1]):
-            for z in range(dd.shape[2]):
-                d[x,y,z] = cdist([dd[x,y,z]], [[0,0,0]])[0]
-
-    dd2 = neighb.reshape((r,r,r,3))
-    d2 = np.zeros((r,r,r))
-    for x in range(dd2.shape[0]):
-        for y in range(dd2.shape[1]):
-            for z in range(dd2.shape[2]):
-                d2[x,y,z] = cdist([dd2[x,y,z]], [[0,0,0]])[0]
-
+# def check_dists(neighb, r):
+#     dd = neighb.reshape((r,r,r,3)).transpose([1,0,2,3])
+#     d = np.zeros((r,r,r))
+#     for x in range(dd.shape[0]):
+#         for y in range(dd.shape[1]):
+#             for z in range(dd.shape[2]):
+#                 d[x,y,z] = cdist([dd[x,y,z]], [[0,0,0]])[0]
+#
+#     dd2 = neighb.reshape((r,r,r,3))
+#     d2 = np.zeros((r,r,r))
+#     for x in range(dd2.shape[0]):
+#         for y in range(dd2.shape[1]):
+#             for z in range(dd2.shape[2]):
+#                 d2[x,y,z] = cdist([dd2[x,y,z]], [[0,0,0]])[0]
+#
 
 
 def get_electrodes(subject, elecs_dir='', delimiter=','):
