@@ -8,6 +8,10 @@ from scipy.spatial.distance import cdist
 import mne
 from mne.surface import read_surface
 from itertools import product
+import csv
+import glob
+import traceback
+
 
 def identify_roi_from_atlas(elecs_names, elecs_pos, approx=4, atlas=None, subjects_dir=None,
     subject=None):
@@ -35,16 +39,18 @@ def identify_roi_from_atlas(elecs_names, elecs_pos, approx=4, atlas=None, subjec
     len_lh_pia = len(pia_verts['lh'])
     lut = import_freesurfer_lut()
 
-    elecs = {}
+    elecs = []
     for elec_pos, elec_name in zip(elecs_pos, elecs_names):
+        # if (elec_name[:3]) != 'LAT':
+        #     continue
         regions, regions_hits, subcortical_regions, subcortical_hits = \
             identify_roi_from_atlas_per_electrode(elec_pos, pia, len_lh_pia,
                 parcels, lut, aseg_header, approx, subjects_dir, subject)
         regions_hits, subcortical_hits = np.array(regions_hits), np.array(subcortical_hits)
         regions_probs = np.hstack((regions_hits, subcortical_hits)) / float(np.sum(regions_hits) + np.sum(subcortical_hits))
-        elecs[elec_name] = {'cortical_rois': regions, 'subcortical_rois': subcortical_regions,
+        elecs.append({'name': elec_name, 'cortical_rois': regions, 'subcortical_rois': subcortical_regions,
             'cortical_probs': regions_probs[:len(regions)],
-            'subcortical_probs': regions_probs[len(regions):]}
+            'subcortical_probs': regions_probs[len(regions):]})
 
     return elecs
 
@@ -88,6 +94,7 @@ def identify_roi_from_atlas_per_electrode(pos, pia, len_lh_pia, parcels, lut, as
     bins = calc_neighbors(closest_vert_pos, approx, True)
 
     excludes=['white', 'WM', 'Unknown', 'White', 'unknown', 'Cerebral-Cortex']
+    excludes=['Unknown', 'unknown', 'Cerebral-Cortex']
     compiled_excludes = re.compile('|'.join(excludes))
     _region_is_excluded = partial(region_is_excluded, compiled_excludes=compiled_excludes)
 
@@ -98,9 +105,10 @@ def identify_roi_from_atlas_per_electrode(pos, pia, len_lh_pia, parcels, lut, as
         intersect_verts = np.intersect1d(parcel.vertices, radius_label.vertices)
         if len(intersect_verts)>0:
             hits = calc_hits_in_neighbors(pos, verts[intersect_verts], bins, approx)
-            regions_hits.append(hits)
-            #force convert from unicode
-            regions.append(str(parcel.name))
+            if hits > 0:
+                regions_hits.append(hits)
+                #force convert from unicode
+                regions.append(str(parcel.name))
 
     # print('regions')
     # print([(n,h) for n,h in zip(regions, regions_hits)])
@@ -114,7 +122,7 @@ def identify_roi_from_atlas_per_electrode(pos, pia, len_lh_pia, parcels, lut, as
     return regions, regions_hits, subcortical_regions, subcortical_hits
 
 
-def calc_hits_in_neighbors(pos, points, neighb, bins_centers, approx):
+def calc_hits_in_neighbors(pos, points, neighb, approx):
     bins = [np.sort(np.unique(neighb[:, idim])) for idim in range(points.shape[1])]
     hist, bin_edges = np.histogramdd(points, bins=bins, normed=False)
     # dists = cdist(bins_centers, [pos])
@@ -129,6 +137,15 @@ def calc_hits_in_neighbors(pos, points, neighb, bins_centers, approx):
         bin_center = [bin[ind] for bin,ind in zip(hist_bin_centers_list, (i, j, k))]
         if hist[i,j,k]>0 and cdist([pos], [bin_center])[0] < approx:
             ret_indices.append((i,j,k))
+    hits = len(ret_indices)
+
+    bin_centers = list(product(*hist_bin_centers_list))
+    dists = cdist([pos], bin_centers)[0].reshape(hist.shape)
+    hits2 = len(np.where((hist > 0) & (dists<approx))[0])
+
+    if hits != hits2:
+        print('asdf')
+
     return len(ret_indices)
 
 
@@ -153,7 +170,7 @@ def identify_roi_from_aparc(pos, lut, aseg_header, approx=4, subjects_dir=None, 
         compiled_excludes = re.compile('|'.join(excludes))
         _region_is_excluded = partial(region_is_excluded, compiled_excludes=compiled_excludes)
         neighb = calc_neighbors(pos, approx)
-        dists = cdist([[0,0,0]], neighb)[0]
+        dists = cdist([pos], neighb)[0]
         neighb = neighb[np.where(dists<approx)]
         regions = []
         for p in xrange(neighb.shape[0]):
@@ -269,54 +286,76 @@ def write_results_to_csv(subject, elecs, parcelation='aparc250', elecs_dir=''):
         elecs_dir = get_electrodes_dir()
 
     cortical_rois, subcortical_rois = [], []
-    for elc in elecs.itervalues():
+    for elc in elecs:
         cortical_rois.extend(elc['cortical_rois'])
         subcortical_rois.extend(elc['subcortical_rois'])
     cortical_rois = list(np.unique(cortical_rois))
     subcortical_rois = list(np.unique(subcortical_rois))
 
-    header = ['electrode'] + cortical_rois + subcortical_rois
-    values = insert_values(elecs, header, [cortical_rois, subcortical_rois],
-        ['cortical_rois','subcortical_rois'], ['cortical_probs', 'subcortical_probs'])
-    np.savetxt(os.path.join(elecs_dir, '{}_{}_electrodes_all_rois.csv'.format(subject, parcelation)),
-               values, fmt="%s")
+    write_values(elecs, ['electrode'] + cortical_rois + subcortical_rois, [cortical_rois, subcortical_rois],
+        ['cortical_rois','subcortical_rois'], ['cortical_probs', 'subcortical_probs'],
+        os.path.join(elecs_dir, '{}_{}_electrodes_all_rois.csv'.format(subject, parcelation)))
 
-    header = ['electrode'] + cortical_rois
-    values = insert_values(elecs, header, [cortical_rois],['cortical_rois'], ['cortical_probs'])
-    np.savetxt(os.path.join(elecs_dir, '{}_{}_electrodes_cortical_rois.csv'.format(subject, parcelation)),
-               values, fmt="%s")
+    write_values(elecs, ['electrode'] + cortical_rois, [cortical_rois],['cortical_rois'], ['cortical_probs'],
+        os.path.join(elecs_dir, '{}_{}_electrodes_cortical_rois.csv'.format(subject, parcelation)))
 
-    header = ['electrode']  + subcortical_rois
-    values = insert_values(elecs, header, [subcortical_rois],
-        ['subcortical_rois'], ['subcortical_probs'])
-    np.savetxt(os.path.join(elecs_dir, '{}_{}_electrodes_subcortical_rois.csv'.format(subject, parcelation)),
-               values, fmt="%s")
+    write_values(elecs, ['electrode']  + subcortical_rois, [subcortical_rois],
+        ['subcortical_rois'], ['subcortical_probs'],
+        os.path.join(elecs_dir, '{}_{}_electrodes_subcortical_rois.csv'.format(subject, parcelation)))
 
 
-def insert_values(elecs, header, rois_arr, rois_names, probs_names):
-    cols_num = sum(map(len, rois_arr)) + 1
-    values = np.empty((len(elecs) + 1, cols_num), dtype=str)
-    values[0, :] = header
-    for line, (name, elc) in enumerate(elecs.iteritems()):
-        values[line + 1, 0] = name
-        for rois, rois_field, prob_field in zip(rois_arr, rois_names, probs_names):
-            for col, roi in enumerate(rois):
-                if roi in elc[rois_field]:
-                    index = elc[rois_field].index(roi)
-                    values[line + 1, col+1] = str(elc[prob_field][index])
-    return values
+def write_values(elecs, header, rois_arr, rois_names, probs_names, file_name):
+    # cols_num = sum(map(len, rois_arr)) + 1
+    # values = np.empty((len(elecs) + 1, cols_num), dtype=str)
+    with open(file_name, 'w') as fp:
+        writer = csv.writer(fp, delimiter=',')
+        writer.writerow(header)
+        for elc in elecs:
+            values = [elc['name']]
+            for rois, rois_field, prob_field in zip(rois_arr, rois_names, probs_names):
+                for col, roi in enumerate(rois):
+                    if roi in elc[rois_field]:
+                        index = elc[rois_field].index(roi)
+                        values.append(str(elc[prob_field][index]))
+                    else:
+                        values.append(0.)
+            writer.writerow(values)
+
+def get_subjects():
+    files = glob.glob(os.path.join(get_electrodes_dir(), '*.csv'))
+    names = set()
+    for full_file_name in files:
+        file_name = os.path.split(full_file_name)[1]
+        if '_' not in file_name:
+            names.add(os.path.splitext(file_name)[0])
+    return names
+
+def run_for_all_subjects(atlas, error_radius, subjects_dir, overwrite=False):
+    subjects = get_subjects()
+    ok_subjects = []
+    for subject in subjects:
+        output_file = os.path.join(get_electrodes_dir(), '{}_{}_electrodes_all_rois.csv'.format(subject, atlas))
+        if not os.path.isfile(output_file) or overwrite:
+            try:
+                subjects_dir = '/space/huygens/1/users/mia/subjects/{}_SurferOutput'.format(subject)
+                elecs_names, elecs_pos = get_electrodes(subject)
+                elecs = identify_roi_from_atlas(elecs_names, elecs_pos,
+                    atlas=atlas, approx=error_radius,
+                    subjects_dir=subjects_dir, subject=subject)
+                write_results_to_csv(subject, elecs)
+                ok_subjects.append(subject)
+            except:
+                print(traceback.format_exc())
+    print('Subjects:')
+    print(ok_subjects)
 
 
 if __name__ == '__main__':
-    subject = 'mg63'
     subject = 'mg78'
     subjects_dir = [s for s in ['/home/noam/subjects', '/homes/5/npeled/space3/subjects'] if os.path.isdir(s)][0]
     os.environ['FREESURFER_HOME'] = '/usr/local/freesurfer/stable5_3_0'
-    parcellation = 'aparc250'
+    atlas = 'aparc250'
     error_radius = 4
+    overwrite = False
 
-    elecs_names, elecs_pos = get_electrodes(subject)
-    elecs = identify_roi_from_atlas(elecs_names, elecs_pos,
-        atlas=parcellation, approx=error_radius,
-        subjects_dir=subjects_dir, subject=subject)
-    write_results_to_csv(subject, elecs)
+    run_for_all_subjects(atlas, error_radius, subjects_dir, overwrite)
