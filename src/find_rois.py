@@ -1,6 +1,5 @@
 import numpy as np
 import os
-import sys
 from functools import partial
 import re
 import nibabel as nib
@@ -14,8 +13,6 @@ import glob
 import traceback
 import shutil
 import string
-# sys.path.append('/homes/5/npeled/space3/code/mmvt_preprocessing/src')
-# import utils as mmvt_utils
 
 
 def identify_roi_from_atlas(elecs_names, elecs_pos, elcs_ori, approx=4, elc_length=1, nei_dimensions=None,
@@ -95,7 +92,7 @@ def identify_roi_from_atlas_per_electrode(pos, pia, len_lh_pia, parcels, lut, as
     verts, _ = read_surface(surf_fname)
     closest_vert_pos = verts[closest_vert]
     bins = calc_neighbors(closest_vert_pos, approx, nei_dimensions, calc_bins=True)
-    elc_line = [pos + elc_ori*t for t in np.linspace(-elc_length, elc_length, 100)]
+    elc_line = [pos + elc_ori*t for t in np.linspace(-elc_length/2.0, elc_length/2.0, 100)]
 
     # excludes=['white', 'WM', 'Unknown', 'White', 'unknown', 'Cerebral-Cortex']
     excludes=['Unknown', 'unknown', 'Cerebral-Cortex']
@@ -114,14 +111,8 @@ def identify_roi_from_atlas_per_electrode(pos, pia, len_lh_pia, parcels, lut, as
                 #force convert from unicode
                 regions.append(str(parcel.name))
 
-    # print('regions')
-    # print([(n,h) for n,h in zip(regions, regions_hits)])
-
-    subcortical_regions, subcortical_hits = identify_roi_from_aparc(pos, elc_line, lut, aseg_header, approx=approx,
+    subcortical_regions, subcortical_hits = identify_roi_from_aparc(pos, elc_line, elc_length, lut, aseg_header, approx=approx,
         nei_dimensions=nei_dimensions, subcortical_only=True, excludes=excludes)
-    # print('subcortical_regions')
-    # print([(n,h) for n,h in zip(subcortical_regions, subcortical_hits)])
-    # regions = exclude_regions(regions, excludes)
     return regions, regions_hits, subcortical_regions, subcortical_hits
 
 
@@ -149,7 +140,7 @@ def calc_hits_in_neighbors_from_line(line, points, neighb, approx):
     return hits
 
 
-def identify_roi_from_aparc(pos, elc_line, lut, aseg_header, approx=4, nei_dimensions=None,
+def identify_roi_from_aparc(pos, elc_line, elc_length, lut, aseg_header, approx=4, nei_dimensions=None,
     subcortical_only=False, excludes=None):
     '''
     Find the volumetric labels contacted by an electrode at this position
@@ -169,17 +160,24 @@ def identify_roi_from_aparc(pos, elc_line, lut, aseg_header, approx=4, nei_dimen
     def find_neighboring_regions(pos, elc_length, elc_line, aseg_header, lut, approx, dimensions, excludes):
         compiled_excludes = re.compile('|'.join(excludes))
         _region_is_excluded = partial(region_is_excluded, compiled_excludes=compiled_excludes)
-        #todo: how to build the neighb
-        neighb = calc_neighbors(pos, max(elc_length, approx), dimensions)
+        neighb = calc_neighbors(pos, elc_length + approx, dimensions)
         dists = np.min(cdist(elc_line, neighb), 0)
+        # import matplotlib.pyplot as plt
+        # plt.hist(cdist([pos], neighb)[0])
+        # plt.hist(dists)
         neighb = neighb[np.where(dists<approx)]
         regions = []
         for nei in neighb:
-            cx, cy, cz = map(int, nei)
-            d_type = aseg_header[cx, cy, cz]
-            label_index = np.where(lut['index']==d_type)[0][0]
-            region = lut['label'][label_index]
-            if not _region_is_excluded(region):
+            nei_regions = set()
+            round_neis = round_coords(nei)
+            for round_nei in round_neis:
+                cx, cy, cz = map(int, round_nei)
+                d_type = aseg_header[cx, cy, cz]
+                label_index = np.where(lut['index']==d_type)[0][0]
+                region = lut['label'][label_index]
+                if not _region_is_excluded(region):
+                    nei_regions.add(region)
+            for region in nei_regions:
                 regions.append(region)
 
         # regions = exclude_regions(regions, excludes)
@@ -190,6 +188,11 @@ def identify_roi_from_aparc(pos, elc_line, lut, aseg_header, approx=4, nei_dimen
             hits.append(count)
         return regions, hits
         # return np.unique(regions).tolist()
+
+    def round_coords(pos):
+        rounds = [[np.floor(pos[d]), np.ceil(pos[d])] for d in range(3)]
+        coords = list(product(*rounds))
+        return coords
 
     def to_ras(points):
         RAS_AFF = np.array([[-1, 0, 0, 128],
@@ -202,9 +205,14 @@ def identify_roi_from_aparc(pos, elc_line, lut, aseg_header, approx=4, nei_dimen
     if subcortical_only:
         excludes.append('ctx')
 
-    ras_pos = to_ras([pos])[0]
-    ras_elc_line = to_ras(elc_line)
-    return find_neighboring_regions(ras_pos, ras_elc_line, aseg_header, lut, approx, nei_dimensions, excludes)
+    RAS_AFF = np.array([[-1, 0, 0, 128],
+        [0, 0, -1, 128],
+        [0, 1, 0, 128],
+        [0, 0, 0, 1]])
+    # ras_pos = np.around(np.dot(RAS_AFF, np.append(pos, 1)))[:3]
+    ras_pos = np.dot(RAS_AFF, np.append(pos, 1))[:3]
+    ras_elc_line = [np.dot(RAS_AFF, np.append(p, 1))[:3] for p in elc_line]
+    return find_neighboring_regions(ras_pos, elc_length, ras_elc_line, aseg_header, lut, approx, nei_dimensions, excludes)
 
 
 def import_freesurfer_lut(fs_lut=None):
@@ -294,32 +302,36 @@ def get_electrodes_dir():
     return elec_dir
 
 
-def write_results_to_csv(subject, elecs, atlas='aparc250', elecs_dir=''):
+def write_results_to_csv(results, atlas, elecs_dir='', post_fix='',
+        write_only_cortical=False, write_only_subcortical=False):
+
     if elecs_dir=='':
         elecs_dir = get_electrodes_dir()
 
     cortical_rois, subcortical_rois = [], []
-    for elc in elecs:
-        cortical_rois.extend(elc['cortical_rois'])
-        subcortical_rois.extend(elc['subcortical_rois'])
+    for elecs in results.itervalues():
+        for elc in elecs:
+            cortical_rois.extend(elc['cortical_rois'])
+            subcortical_rois.extend(elc['subcortical_rois'])
     cortical_rois = list(np.unique(cortical_rois))
     subcortical_rois = list(np.unique(subcortical_rois))
 
-    write_values(elecs, ['electrode'] + cortical_rois + subcortical_rois, [cortical_rois, subcortical_rois],
-        ['cortical_rois','subcortical_rois'], ['cortical_probs', 'subcortical_probs'],
-        os.path.join(elecs_dir, '{}_{}_electrodes_all_rois.csv'.format(subject, atlas)))
+    for subject, elecs in results.iteritems():
+        write_values(elecs, ['electrode'] + cortical_rois + subcortical_rois, [cortical_rois, subcortical_rois],
+            ['cortical_rois','subcortical_rois'], ['cortical_probs', 'subcortical_probs'],
+            os.path.join(elecs_dir, '{}_{}_electrodes_all_rois{}.csv'.format(subject, atlas, post_fix)))
 
-    write_values(elecs, ['electrode'] + cortical_rois, [cortical_rois],['cortical_rois'], ['cortical_probs'],
-        os.path.join(elecs_dir, '{}_{}_electrodes_cortical_rois.csv'.format(subject, atlas)))
+        if write_only_cortical:
+            write_values(elecs, ['electrode'] + cortical_rois, [cortical_rois],['cortical_rois'], ['cortical_probs'],
+                os.path.join(elecs_dir, '{}_{}_electrodes_cortical_rois{}.csv'.format(subject, atlas, post_fix)))
 
-    write_values(elecs, ['electrode']  + subcortical_rois, [subcortical_rois],
-        ['subcortical_rois'], ['subcortical_probs'],
-        os.path.join(elecs_dir, '{}_{}_electrodes_subcortical_rois.csv'.format(subject, atlas)))
+        if write_only_subcortical:
+            write_values(elecs, ['electrode']  + subcortical_rois, [subcortical_rois],
+                ['subcortical_rois'], ['subcortical_probs'],
+                os.path.join(elecs_dir, '{}_{}_electrodes_subcortical_rois{}.csv'.format(subject, atlas, post_fix)))
 
 
 def write_values(elecs, header, rois_arr, rois_names, probs_names, file_name):
-    # cols_num = sum(map(len, rois_arr)) + 1
-    # values = np.empty((len(elecs) + 1, cols_num), dtype=str)
     with open(file_name, 'w') as fp:
         writer = csv.writer(fp, delimiter=',')
         writer.writerow(header)
@@ -338,11 +350,7 @@ def write_values(elecs, header, rois_arr, rois_names, probs_names, file_name):
 def get_electrodes_orientation(elecs_names, elecs_pos):
     elcs_oris = []
     for elc_name, elc_pos in zip(elecs_names, elecs_pos):
-        try:
-            next_elc = '{}{}'.format(elc_name[:3], int(elc_name[-1])+1)
-        except:
-            print(elc_name)
-
+        next_elc = '{}{}'.format(elc_name[:3], int(elc_name[-1])+1)
         ori = 1
         if next_elc not in elecs_names:
             next_elc = '{}{}'.format(elc_name[:3], int(elc_name[-1])-1)
@@ -350,7 +358,7 @@ def get_electrodes_orientation(elecs_names, elecs_pos):
         next_elc_index = np.where(elecs_names==next_elc)[0][0]
         next_elc_pos = elecs_pos[next_elc_index]
         dist = np.linalg.norm(next_elc_pos-elc_pos)
-        elc_ori = ori * (next_elc_pos-elc_pos) / dist
+        elc_ori = ori * (next_elc_pos-elc_pos) / dist # norm(elc_ori)=1mm
         elcs_oris.append(elc_ori)
         # print(elc_name, elc_pos, next_elc, next_elc_pos, elc_line(1))
     return elcs_oris
@@ -368,8 +376,8 @@ def get_subjects():
 
 def check_for_annot_file(subject, subjects_dir, atlas, fsaverage='fsaverage5c', overwrite=False, n_jobs=6):
     annot_file = os.path.join(subjects_dir, subject, 'label', '{}.{}.annot'.format('{hemi}', atlas))
-    if not os.path.isfile(annot_file.format(hemi='rh')) or not os.path.isfile(annot_file.format(hemi='lh')):
-        # morph_labels_from_fsaverage(subject, subjects_dir, atlas, n_jobs=n_jobs, fsaverage=fsaverage, overwrite=overwrite)
+    if overwrite or not os.path.isfile(annot_file.format(hemi='rh')) or not os.path.isfile(annot_file.format(hemi='lh')):
+        morph_labels_from_fsaverage(subject, subjects_dir, atlas, n_jobs=n_jobs, fsaverage=fsaverage, overwrite=overwrite)
         labels_to_annot(subject, subjects_dir, atlas, overwrite=overwrite)
 
 
@@ -383,6 +391,8 @@ def morph_labels_from_fsaverage(subject, subjects_dir='', aparc_name='aparc250',
         os.makedirs(sub_labels_fol)
     for label_file in glob.glob(os.path.join(labels_fol, '*.label')):
         local_label_name = os.path.join(sub_labels_fol, '{}.label'.format(os.path.splitext(os.path.split(label_file)[1])[0]))
+        if os.path.isfile(local_label_name) and overwrite:
+            os.remove(local_label_name)
         if not os.path.isfile(local_label_name) or overwrite:
             fs_label = mne.read_label(label_file)
             fs_label.values.fill(1.0)
@@ -409,6 +419,25 @@ def labels_to_annot(subject, subjects_dir='', aparc_name='aparc250', labels_fol=
                               subjects_dir=subjects_dir)
 
 
+def get_all_labels_and_segmentations(subject, atlas):
+    percs, segs = [], []
+    all_segs = import_freesurfer_lut()['label']
+    excludes=['Unknown', 'unknown', 'Cerebral-Cortex', 'ctx']
+    compiled_excludes = re.compile('|'.join(excludes))
+    _region_is_excluded = partial(region_is_excluded, compiled_excludes=compiled_excludes)
+    for seg in all_segs:
+        if not _region_is_excluded(seg):
+            segs.append(seg)
+
+    for hemi in ['rh', 'lh']:
+        annot_file = os.path.join(subjects_dir, subject, 'label', '{}.{}.annot'.format(hemi, atlas))
+        labels = mne.read_labels_from_annot(subject, surf_name='pial', annot_fname=annot_file)
+        for label in labels:
+            percs.append(label.name)
+
+    return percs, segs
+
+
 def prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, local_subjects_dir, print_traceback=False):
     local_subject_dir = os.path.join(local_subjects_dir, subject)
     for fol, files in neccesary_files.iteritems():
@@ -432,48 +461,73 @@ def prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, 
         raise Exception('Not all files exist in the local subject folder!!!')
 
 
-def run_for_all_subjects(atlas, error_radius, subjects_dir, neccesary_files=None, remote_subject_dir_template='', overwrite=False, n_jobs=6):
+def run_for_all_subjects(atlas, error_radius, elc_length, subjects_dir, template_brain='fsaverage',
+        neccesary_files=None, remote_subject_dir_template='', output_files_post_fix='', overwrite=False,
+        overwrite_annotation=False, write_only_cortical=False, write_only_subcortical=False, n_jobs=6):
+
     subjects = get_subjects()
     ok_subjects, bad_subjects = [], []
+    results = {}
     for subject in subjects:
-        output_file = os.path.join(get_electrodes_dir(), '{}_{}_electrodes_all_rois.csv'.format(subject, atlas))
+        output_file = os.path.join(get_electrodes_dir(), '{}_{}_electrodes_all_rois{}.csv'.format(subject, atlas, output_files_post_fix))
         if not os.path.isfile(output_file) or overwrite:
             try:
                 if not neccesary_files is None:
-                    if isinstance(remote_subject_dir_template, dict) and 'func' in remote_subject_dir_template:
-                        template_val = remote_subject_dir_template['func'](subject)
-                    else:
-                        template_val = subject
-                    remote_subject_dir = remote_subject_dir_template['template'].format(subject=template_val)
-                    prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, subjects_dir, print_traceback=True)
-                check_for_annot_file(subject=subject, subjects_dir=subjects_dir, atlas=atlas, fsaverage='fsaverage5c', overwrite=overwrite, n_jobs=n_jobs)
+                    remote_subject_dir = build_remote_subject_dir(remote_subject_dir_template, subject)
+                    prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, subjects_dir,
+                        print_traceback=True)
+                check_for_annot_file(subject=subject, subjects_dir=subjects_dir, atlas=atlas, fsaverage=template_brain,
+                    overwrite=overwrite_annotation, n_jobs=n_jobs)
                 elecs_names, elecs_pos = get_electrodes(subject)
-                elcs_line = get_electrodes_orientation(elecs_names, elecs_pos)
-                elecs = identify_roi_from_atlas(elecs_names, elecs_pos, elcs_line,
-                    atlas=atlas, approx=error_radius,
+                elcs_ori = get_electrodes_orientation(elecs_names, elecs_pos)
+                elecs = identify_roi_from_atlas(elecs_names, elecs_pos, elcs_ori,
+                    atlas=atlas, approx=error_radius, elc_length=elc_length,
                     subjects_dir=subjects_dir, subject=subject, n_jobs=n_jobs)
-                write_results_to_csv(subject, elecs, atlas)
+                results[subject] = elecs
                 ok_subjects.append(subject)
             except:
                 bad_subjects.append(subject)
                 print(traceback.format_exc())
-        if os.path.isfile(output_file):
-            ok_subjects.append(subject)
+
+    write_results_to_csv(results, atlas, post_fix=output_files_post_fix,
+        write_only_cortical=write_only_cortical, write_only_subcortical=write_only_subcortical)
+
     print('ok subjects:')
     print(ok_subjects)
     print('bad_subjects:')
     print(bad_subjects)
 
 
+def build_remote_subject_dir(remote_subject_dir_template, subject):
+    if isinstance(remote_subject_dir_template, dict):
+        if 'func' in remote_subject_dir_template:
+            template_val = remote_subject_dir_template['func'](subject)
+            remote_subject_dir = remote_subject_dir_template['template'].format(subject=template_val)
+        else:
+            remote_subject_dir = remote_subject_dir_template['template'].format(subject=subject)
+    else:
+        remote_subject_dir = remote_subject_dir_template.format(subject=subject)
+    return remote_subject_dir
+
 
 if __name__ == '__main__':
     subjects_dir = [s for s in ['/home/noam/subjects', '/homes/5/npeled/space3/subjects'] if os.path.isdir(s)][0]
+    os.environ['SUBJECTS_DIR'] = subjects_dir
     os.environ['FREESURFER_HOME'] = '/usr/local/freesurfer/stable5_3_0'
     atlas = 'laus250'
     neccesary_files = {'mri': ['aseg.mgz'], 'surf': ['rh.pial', 'lh.pial', 'rh.sphere.reg', 'lh.sphere.reg', 'lh.white', 'rh.white']}
     remote_subject_dir_template = {'template':'/space/huygens/1/users/mia/subjects/{subject}_SurferOutput', 'func':string.upper}
-    error_radius = 4
+    template_brain = 'fsaverage5c'
+    error_radius = 3
+    elc_length = 4
+    output_files_post_fix = '_cigar_r_{}_l_{}'.format(error_radius, elc_length)
     overwrite = True
+    overwrite_annotation = False
+    write_only_cortical=False
+    write_only_subcortical=False
     n_jobs = 6
 
-    run_for_all_subjects(atlas, error_radius, subjects_dir, neccesary_files, remote_subject_dir_template, overwrite, n_jobs)
+    run_for_all_subjects(atlas, error_radius, elc_length,
+        subjects_dir, template_brain, neccesary_files,
+        remote_subject_dir_template, output_files_post_fix, overwrite, overwrite_annotation,
+        write_only_cortical, write_only_subcortical, n_jobs)
