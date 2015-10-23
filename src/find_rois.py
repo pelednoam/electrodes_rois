@@ -302,13 +302,22 @@ def calc_neighbors(pos, approx=None, dimensions=None, calc_bins=False):
     return pos + neighb
 
 
-def get_electrodes(subject, elecs_dir='', delimiter=','):
+def get_electrodes(subject, bipolar=False, elecs_dir='', delimiter=','):
     if elecs_dir=='':
         elecs_dir = get_electrodes_dir()
     elec_file = os.path.join(elecs_dir, '{}.csv'.format(subject))
     data = np.genfromtxt(elec_file, dtype=str, delimiter=delimiter)
     pos = data[1:, 1:].astype(float)
-    names = data[1:, 0]
+    if bipolar:
+        names = []
+        pos_biploar = []
+        for index in range(data.shape[0]-1):
+            if data[index+1, 0][:3] == data[index, 0][:3]:
+                names.append('{}-{}'.format(data[index+1, 0],data[index, 0]))
+                pos_biploar.append(pos[index] + (pos[index+1]-pos[index])/2)
+        pos = np.array(pos_biploar)
+    else:
+        names = data[1:, 0]
     names = np.array([name.strip() for name in names])
     return names, pos
 
@@ -479,8 +488,8 @@ def prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, 
 
 
 def run_for_all_subjects(subjects, atlas, error_radius, elc_length, subjects_dir, template_brain='fsaverage',
-        neccesary_files=None, remote_subject_dir_template='', output_files_post_fix='', overwrite=False,
-        overwrite_annotation=False, write_only_cortical=False, write_only_subcortical=False,
+        bipolar_electrodes=False, neccesary_files=None, remote_subject_dir_template='', output_files_post_fix='',
+        overwrite=False, overwrite_annotation=False, write_only_cortical=False, write_only_subcortical=False,
         enlarge_if_no_hit=False, n_jobs=6):
 
     ok_subjects, bad_subjects = [], []
@@ -495,7 +504,7 @@ def run_for_all_subjects(subjects, atlas, error_radius, elc_length, subjects_dir
                         print_traceback=True)
                 check_for_annot_file(subject=subject, subjects_dir=subjects_dir, atlas=atlas, fsaverage=template_brain,
                     overwrite=overwrite_annotation, n_jobs=n_jobs)
-                elecs_names, elecs_pos = get_electrodes(subject)
+                elecs_names, elecs_pos = get_electrodes(subject, bipolar_electrodes)
                 elcs_ori = get_electrodes_orientation(elecs_names, elecs_pos)
                 elecs = identify_roi_from_atlas(elecs_names, elecs_pos, elcs_ori,
                     atlas=atlas, approx=error_radius, elc_length=elc_length,
@@ -540,7 +549,8 @@ if __name__ == '__main__':
     subjects = get_subjects()
     error_radius = 3
     elc_length = 4
-    output_files_post_fix = '_cigar_r_{}_l_{}'.format(error_radius, elc_length)
+    bipolar_electrodes = True
+    output_files_post_fix = '_cigar_r_{}_l_{}{}'.format(error_radius, elc_length, '_bipolar' if bipolar_electrodes else '')
     overwrite = True
     overwrite_annotation = False
     write_only_cortical=False
@@ -549,6 +559,6 @@ if __name__ == '__main__':
     n_jobs = 6
 
     run_for_all_subjects(subjects, atlas, error_radius, elc_length,
-        subjects_dir, template_brain, neccesary_files,
+        subjects_dir, template_brain, bipolar_electrodes, neccesary_files,
         remote_subject_dir_template, output_files_post_fix, overwrite, overwrite_annotation,
         write_only_cortical, write_only_subcortical, enlarge_if_no_hit, n_jobs)
