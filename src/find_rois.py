@@ -537,7 +537,7 @@ if __name__ == '__main__':
     neccesary_files = {'mri': ['aseg.mgz'], 'surf': ['rh.pial', 'lh.pial', 'rh.sphere.reg', 'lh.sphere.reg', 'lh.white', 'rh.white']}
     remote_subject_dir_template = {'template':'/space/huygens/1/users/mia/subjects/{subject}_SurferOutput', 'func':string.upper}
     template_brain = 'fsaverage5c'
-    subjects = ['mg78'] # get_subjects()
+    subjects = get_subjects()
     error_radius = 3
     elc_length = 4
     output_files_post_fix = '_cigar_r_{}_l_{}'.format(error_radius, elc_length)
