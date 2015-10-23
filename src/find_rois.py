@@ -16,7 +16,7 @@ import string
 
 
 def identify_roi_from_atlas(elecs_names, elecs_pos, elcs_ori, approx=4, elc_length=1, nei_dimensions=None,
-    atlas=None, subjects_dir=None, subject=None, n_jobs=6):
+    atlas=None, enlarge_if_no_hit=False, subjects_dir=None, subject=None, n_jobs=6):
 
     if subjects_dir is None or subjects_dir=='':
         subjects_dir = os.environ['SUBJECTS_DIR']
@@ -45,7 +45,8 @@ def identify_roi_from_atlas(elecs_names, elecs_pos, elcs_ori, approx=4, elc_leng
     for elec_pos, elec_name, elc_ori in zip(elecs_pos, elecs_names, elcs_ori):
         regions, regions_hits, subcortical_regions, subcortical_hits = \
             identify_roi_from_atlas_per_electrode(elec_pos, pia, len_lh_pia,
-                parcels, lut, aseg_header, approx, elc_length, nei_dimensions, elc_ori, subjects_dir, subject)
+                parcels, lut, aseg_header, approx, elc_length, nei_dimensions, elc_ori,
+                enlarge_if_no_hit, subjects_dir, subject)
         regions_hits, subcortical_hits = np.array(regions_hits), np.array(subcortical_hits)
         regions_probs = np.hstack((regions_hits, subcortical_hits)) / float(np.sum(regions_hits) + np.sum(subcortical_hits))
         elecs.append({'name': elec_name, 'cortical_rois': regions, 'subcortical_rois': subcortical_regions,
@@ -56,7 +57,8 @@ def identify_roi_from_atlas(elecs_names, elecs_pos, elcs_ori, approx=4, elc_leng
 
 
 def identify_roi_from_atlas_per_electrode(pos, pia, len_lh_pia, parcels, lut, aseg_header,
-    approx=4, elc_length=1, nei_dimensions=None, elc_ori=None, subjects_dir=None, subject=None):
+    approx=4, elc_length=1, nei_dimensions=None, elc_ori=None,
+    enlarge_if_no_hit=False, subjects_dir=None, subject=None):
     '''
     Find the surface labels contacted by an electrode at this position
     in RAS space.
@@ -84,37 +86,51 @@ def identify_roi_from_atlas_per_electrode(pos, pia, len_lh_pia, parcels, lut, as
     if hemi_str == 'rh':
         closest_vert -= len_lh_pia
 
-    # grow the area of surface surrounding the vertex
-    radius_label, = mne.grow_labels(subject, closest_vert, approx, hemi_code,
-        subjects_dir=subjects_dir, surface='pial')
-
     surf_fname = os.path.join(subjects_dir, subject, 'surf', hemi_str + '.pial')
     verts, _ = read_surface(surf_fname)
     closest_vert_pos = verts[closest_vert]
-    bins = calc_neighbors(closest_vert_pos, approx, nei_dimensions, calc_bins=True)
-    elc_line = [pos + elc_ori*t for t in np.linspace(-elc_length/2.0, elc_length/2.0, 100)]
 
-    # excludes=['white', 'WM', 'Unknown', 'White', 'unknown', 'Cerebral-Cortex']
-    excludes=['Unknown', 'unknown', 'Cerebral-Cortex']
-    compiled_excludes = re.compile('|'.join(excludes))
-    _region_is_excluded = partial(region_is_excluded, compiled_excludes=compiled_excludes)
+    we_have_a_hit = False
+    while not we_have_a_hit:
+        # grow the area of surface surrounding the vertex
+        radius_label, = mne.grow_labels(subject, closest_vert, approx, hemi_code,
+            subjects_dir=subjects_dir, surface='pial')
 
-    regions, regions_hits = [], []
-    for parcel in parcels[hemi_str]:
-        if _region_is_excluded(str(parcel.name)):
-            continue
-        intersect_verts = np.intersect1d(parcel.vertices, radius_label.vertices)
-        if len(intersect_verts)>0:
-            hits = calc_hits_in_neighbors_from_line(elc_line, verts[intersect_verts], bins, approx)
-            if hits > 0:
-                regions_hits.append(hits)
-                #force convert from unicode
-                regions.append(str(parcel.name))
+        bins = calc_neighbors(closest_vert_pos, approx + elc_length, nei_dimensions, calc_bins=True)
+        elc_line = [pos + elc_ori*t for t in np.linspace(-elc_length/2.0, elc_length/2.0, 100)]
 
-    subcortical_regions, subcortical_hits = identify_roi_from_aparc(pos, elc_line, elc_length, lut, aseg_header, approx=approx,
-        nei_dimensions=nei_dimensions, subcortical_only=True, excludes=excludes)
+        # excludes=['white', 'WM', 'Unknown', 'White', 'unknown', 'Cerebral-Cortex']
+        excludes=['Unknown', 'unknown', 'Cerebral-Cortex']
+        compiled_excludes = re.compile('|'.join(excludes))
+        _region_is_excluded = partial(region_is_excluded, compiled_excludes=compiled_excludes)
+
+        regions, regions_hits = [], []
+        for parcel in parcels[hemi_str]:
+            if _region_is_excluded(str(parcel.name)):
+                continue
+            intersect_verts = np.intersect1d(parcel.vertices, radius_label.vertices)
+            if len(intersect_verts)>0:
+                hits = calc_hits_in_neighbors_from_line(elc_line, verts[intersect_verts], bins, approx)
+                if hits > 0:
+                    regions_hits.append(hits)
+                    #force convert from unicode
+                    regions.append(str(parcel.name))
+
+        subcortical_regions, subcortical_hits = identify_roi_from_aparc(pos, elc_line, elc_length, lut, aseg_header, approx=approx,
+            nei_dimensions=nei_dimensions, subcortical_only=True, excludes=excludes)
+
+        we_have_a_hit = not electrode_is_only_in_white_matter(regions, subcortical_regions) or not enlarge_if_no_hit
+        if not we_have_a_hit:
+            approx += .5
+            elc_length += 1
+
     return regions, regions_hits, subcortical_regions, subcortical_hits
 
+
+def electrode_is_only_in_white_matter(regions, subcortical_regions):
+    return len(regions) == 0 and len(subcortical_regions)==1 and \
+        subcortical_regions[0] in ['{}-Cerebral-White-Matter'.format(hemi) \
+        for hemi in ['Right', 'Left']]
 
 # def calc_hits_in_neighbors_from_line(line, points, neighb, approx):
 #     bins = [np.sort(np.unique(neighb[:, idim])) for idim in range(points.shape[1])]
@@ -133,7 +149,8 @@ def identify_roi_from_atlas_per_electrode(pos, pia, len_lh_pia, parcels, lut, as
 def calc_hits_in_neighbors_from_line(line, points, neighb, approx):
     bins = [np.sort(np.unique(neighb[:, idim])) for idim in range(points.shape[1])]
     hist, bin_edges = np.histogramdd(points, bins=bins, normed=False)
-    hist_bin_centers_list = [bin_edges[d][:-1] + (bin_edges[d][1:] - bin_edges[d][:-1])/2. for d in range(len(bin_edges))]
+    hist_bin_centers_list = [bin_edges[d][:-1] + (bin_edges[d][1:] - bin_edges[d][:-1])/2.
+        for d in range(len(bin_edges))]
     bin_centers = list(product(*hist_bin_centers_list))
     dists = np.min(cdist(line, bin_centers), 0).reshape(hist.shape)
     hits = len(np.where((hist > 0) & (dists<approx))[0])
@@ -461,11 +478,11 @@ def prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, 
         raise Exception('Not all files exist in the local subject folder!!!')
 
 
-def run_for_all_subjects(atlas, error_radius, elc_length, subjects_dir, template_brain='fsaverage',
+def run_for_all_subjects(subjects, atlas, error_radius, elc_length, subjects_dir, template_brain='fsaverage',
         neccesary_files=None, remote_subject_dir_template='', output_files_post_fix='', overwrite=False,
-        overwrite_annotation=False, write_only_cortical=False, write_only_subcortical=False, n_jobs=6):
+        overwrite_annotation=False, write_only_cortical=False, write_only_subcortical=False,
+        enlarge_if_no_hit=False, n_jobs=6):
 
-    subjects = get_subjects()
     ok_subjects, bad_subjects = [], []
     results = {}
     for subject in subjects:
@@ -482,7 +499,8 @@ def run_for_all_subjects(atlas, error_radius, elc_length, subjects_dir, template
                 elcs_ori = get_electrodes_orientation(elecs_names, elecs_pos)
                 elecs = identify_roi_from_atlas(elecs_names, elecs_pos, elcs_ori,
                     atlas=atlas, approx=error_radius, elc_length=elc_length,
-                    subjects_dir=subjects_dir, subject=subject, n_jobs=n_jobs)
+                    enlarge_if_no_hit=enlarge_if_no_hit, subjects_dir=subjects_dir,
+                    subject=subject, n_jobs=n_jobs)
                 results[subject] = elecs
                 ok_subjects.append(subject)
             except:
@@ -512,12 +530,14 @@ def build_remote_subject_dir(remote_subject_dir_template, subject):
 
 if __name__ == '__main__':
     subjects_dir = [s for s in ['/home/noam/subjects', '/homes/5/npeled/space3/subjects'] if os.path.isdir(s)][0]
+    freesurfer_home = [s for s in ['/usr/local/freesurfer/stable5_3_0', '/home/noam/freesurfer'] if os.path.isdir(s)][0]
     os.environ['SUBJECTS_DIR'] = subjects_dir
-    os.environ['FREESURFER_HOME'] = '/usr/local/freesurfer/stable5_3_0'
+    os.environ['FREESURFER_HOME'] = freesurfer_home
     atlas = 'laus250'
     neccesary_files = {'mri': ['aseg.mgz'], 'surf': ['rh.pial', 'lh.pial', 'rh.sphere.reg', 'lh.sphere.reg', 'lh.white', 'rh.white']}
     remote_subject_dir_template = {'template':'/space/huygens/1/users/mia/subjects/{subject}_SurferOutput', 'func':string.upper}
     template_brain = 'fsaverage5c'
+    subjects = ['mg78'] # get_subjects()
     error_radius = 3
     elc_length = 4
     output_files_post_fix = '_cigar_r_{}_l_{}'.format(error_radius, elc_length)
@@ -525,9 +545,10 @@ if __name__ == '__main__':
     overwrite_annotation = False
     write_only_cortical=False
     write_only_subcortical=False
+    enlarge_if_no_hit=True
     n_jobs = 6
 
-    run_for_all_subjects(atlas, error_radius, elc_length,
+    run_for_all_subjects(subjects, atlas, error_radius, elc_length,
         subjects_dir, template_brain, neccesary_files,
         remote_subject_dir_template, output_files_post_fix, overwrite, overwrite_annotation,
-        write_only_cortical, write_only_subcortical, n_jobs)
+        write_only_cortical, write_only_subcortical, enlarge_if_no_hit, n_jobs)
