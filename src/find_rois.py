@@ -13,10 +13,11 @@ import glob
 import traceback
 import shutil
 import string
+import logging
 
-
-def identify_roi_from_atlas(elecs_names, elecs_pos, elcs_ori, approx=4, elc_length=1, nei_dimensions=None,
-    atlas=None, enlarge_if_no_hit=False, subjects_dir=None, subject=None, n_jobs=6):
+def identify_roi_from_atlas(elecs_names, elecs_pos, elcs_ori, approx=4, elc_length=1,
+    nei_dimensions=None, atlas=None, elecs_dists=None, strech_to_dist=False, enlarge_if_no_hit=False,
+    bipolar_electrodes=False, subjects_dir=None, subject=None, n_jobs=6):
 
     if subjects_dir is None or subjects_dir=='':
         subjects_dir = os.environ['SUBJECTS_DIR']
@@ -42,11 +43,11 @@ def identify_roi_from_atlas(elecs_names, elecs_pos, elcs_ori, approx=4, elc_leng
     lut = import_freesurfer_lut()
 
     elecs = []
-    for elec_pos, elec_name, elc_ori in zip(elecs_pos, elecs_names, elcs_ori):
+    for elec_pos, elec_name, elc_ori, elc_dist in zip(elecs_pos, elecs_names, elcs_ori, elecs_dists):
         regions, regions_hits, subcortical_regions, subcortical_hits = \
             identify_roi_from_atlas_per_electrode(elec_pos, pia, len_lh_pia,
                 parcels, lut, aseg_header, approx, elc_length, nei_dimensions, elc_ori,
-                enlarge_if_no_hit, subjects_dir, subject)
+                elc_dist, strech_to_dist, enlarge_if_no_hit, bipolar_electrodes, subjects_dir, subject)
         regions_hits, subcortical_hits = np.array(regions_hits), np.array(subcortical_hits)
         regions_probs = np.hstack((regions_hits, subcortical_hits)) / float(np.sum(regions_hits) + np.sum(subcortical_hits))
         elecs.append({'name': elec_name, 'cortical_rois': regions, 'subcortical_rois': subcortical_regions,
@@ -57,8 +58,8 @@ def identify_roi_from_atlas(elecs_names, elecs_pos, elcs_ori, approx=4, elc_leng
 
 
 def identify_roi_from_atlas_per_electrode(pos, pia, len_lh_pia, parcels, lut, aseg_header,
-    approx=4, elc_length=1, nei_dimensions=None, elc_ori=None,
-    enlarge_if_no_hit=False, subjects_dir=None, subject=None):
+    approx=4, elc_length=1, nei_dimensions=None, elc_ori=None, elc_dist=0, strech_to_dist=False,
+    enlarge_if_no_hit=False, bipolar_electrodes=False, subjects_dir=None, subject=None):
     '''
     Find the surface labels contacted by an electrode at this position
     in RAS space.
@@ -91,6 +92,8 @@ def identify_roi_from_atlas_per_electrode(pos, pia, len_lh_pia, parcels, lut, as
     closest_vert_pos = verts[closest_vert]
 
     we_have_a_hit = False
+    if strech_to_dist and bipolar_electrodes and elc_length < elc_dist:
+        elc_length = elc_dist
     while not we_have_a_hit:
         # grow the area of surface surrounding the vertex
         radius_label, = mne.grow_labels(subject, closest_vert, approx, hemi_code,
@@ -179,9 +182,6 @@ def identify_roi_from_aparc(pos, elc_line, elc_length, lut, aseg_header, approx=
         _region_is_excluded = partial(region_is_excluded, compiled_excludes=compiled_excludes)
         neighb = calc_neighbors(pos, elc_length + approx, dimensions)
         dists = np.min(cdist(elc_line, neighb), 0)
-        # import matplotlib.pyplot as plt
-        # plt.hist(cdist([pos], neighb)[0])
-        # plt.hist(dists)
         neighb = neighb[np.where(dists<approx)]
         regions = []
         for nei in neighb:
@@ -211,24 +211,21 @@ def identify_roi_from_aparc(pos, elc_line, elc_length, lut, aseg_header, approx=
         coords = list(product(*rounds))
         return coords
 
-    def to_ras(points):
+    def to_ras(points, round_coo=False):
         RAS_AFF = np.array([[-1, 0, 0, 128],
             [0, 0, -1, 128],
             [0, 1, 0, 128],
             [0, 0, 0, 1]])
-        return [np.around(np.dot(RAS_AFF, np.append(p, 1)))[:3] for p in points]
-
+        ras = [np.dot(RAS_AFF, np.append(p, 1))[:3] for p in points]
+        if round_coo:
+            ras = [np.around(p) for p in ras]
+        return ras
 
     if subcortical_only:
         excludes.append('ctx')
 
-    RAS_AFF = np.array([[-1, 0, 0, 128],
-        [0, 0, -1, 128],
-        [0, 1, 0, 128],
-        [0, 0, 0, 1]])
-    # ras_pos = np.around(np.dot(RAS_AFF, np.append(pos, 1)))[:3]
-    ras_pos = np.dot(RAS_AFF, np.append(pos, 1))[:3]
-    ras_elc_line = [np.dot(RAS_AFF, np.append(p, 1))[:3] for p in elc_line]
+    ras_pos = to_ras([pos])[0]
+    ras_elc_line = to_ras(elc_line)
     return find_neighboring_regions(ras_pos, elc_length, ras_elc_line, aseg_header, lut, approx, nei_dimensions, excludes)
 
 
@@ -286,6 +283,7 @@ def calc_neighbors(pos, approx=None, dimensions=None, calc_bins=False):
         sx, sy, sz = dimensions
     else:
         raise Exception('approx and dimensions are None!')
+        logging.error('calc_neighbors: approx and dimensions are None!')
 
     x, y, z = np.meshgrid(range(sx), range(sy), range(sz))
 
@@ -307,19 +305,33 @@ def get_electrodes(subject, bipolar=False, elecs_dir='', delimiter=','):
         elecs_dir = get_electrodes_dir()
     elec_file = os.path.join(elecs_dir, '{}.csv'.format(subject))
     data = np.genfromtxt(elec_file, dtype=str, delimiter=delimiter)
-    pos = data[1:, 1:].astype(float)
+    # Check if the electrodes coordinates has a header
+    try:
+        header = data[0, 1:].astype(float)
+    except:
+        data = np.delete(data, (0), axis=0)
+
+    pos = data[:, 1:].astype(float)
+    dists = []
     if bipolar:
-        names = []
-        pos_biploar = []
-        for index in range(data.shape[0]-1):
+        pos_biploar, names = [], []
+        for index in range(data.shape[0]-2):
             if data[index+1, 0][:3] == data[index, 0][:3]:
                 names.append('{}-{}'.format(data[index+1, 0],data[index, 0]))
                 pos_biploar.append(pos[index] + (pos[index+1]-pos[index])/2)
+                dists.append(np.linalg.norm(pos[index+1]-pos[index]))
         pos = np.array(pos_biploar)
     else:
-        names = data[1:, 0]
+        names = data[:, 0]
+        dists = [np.linalg.norm(p2-p1) for p1,p2 in zip(pos[:-1], pos[1:])]
+        # Add the distance for the last electrode
+        dists.append(0.)
     names = np.array([name.strip() for name in names])
-    return names, pos
+    if not len(names) == len(pos) == len(dists):
+        logging.error('get_electrodes ({}): not len(names)==len(pos)==len(dists)!'.format(subject))
+        raise Exception('get_electrodes: not len(names)==len(pos)==len(dists)!')
+
+    return names, pos, dists
 
 
 def get_electrodes_dir():
@@ -373,13 +385,18 @@ def write_values(elecs, header, rois_arr, rois_names, probs_names, file_name):
             writer.writerow(values)
 
 
-def get_electrodes_orientation(elecs_names, elecs_pos):
+def get_electrodes_orientation(elecs_names, elecs_pos, bipolar):
     elcs_oris = []
     for elc_name, elc_pos in zip(elecs_names, elecs_pos):
         next_elc = '{}{}'.format(elc_name[:3], int(elc_name[-1])+1)
+        if bipolar_electrodes:
+            next_elc = '{}{}-{}'.format(elc_name[:3], int(elc_name[-1])+2, next_elc)
         ori = 1
         if next_elc not in elecs_names:
-            next_elc = '{}{}'.format(elc_name[:3], int(elc_name[-1])-1)
+            if bipolar_electrodes:
+                next_elc = '{}-{}{}'.format(elc_name[-4:], elc_name[-4:-1], int(elc_name[-1])-1)
+            else:
+                next_elc = '{}{}'.format(elc_name[:3], int(elc_name[-1])-1)
             ori = -1
         next_elc_index = np.where(elecs_names==next_elc)[0][0]
         next_elc_pos = elecs_pos[next_elc_index]
@@ -439,6 +456,7 @@ def labels_to_annot(subject, subjects_dir='', aparc_name='aparc250', labels_fol=
             labels.append(label)
         except:
             print('error reading the label!')
+            logging.error('labels_to_annot ({}): {}'.format(subject, traceback.format_exc()))
             print(traceback.format_exc())
 
     mne.write_labels_to_annot(subject=subject, labels=labels, parc=aparc_name, overwrite=overwrite,
@@ -475,6 +493,7 @@ def prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, 
                     shutil.copyfile(os.path.join(remote_subject_dir, fol, file_name),
                                 os.path.join(local_subject_dir, fol, file_name))
             except:
+                logging.error('{}: {}'.format(subject, traceback.format_exc()))
                 if print_traceback:
                     print(traceback.format_exc())
     all_files_exists = True
@@ -485,12 +504,12 @@ def prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, 
                 all_files_exists = False
     if not all_files_exists:
         raise Exception('Not all files exist in the local subject folder!!!')
-
+        logging.error('{}: {}'.format(subject, 'Not all files exist in the local subject folder!!!'))
 
 def run_for_all_subjects(subjects, atlas, error_radius, elc_length, subjects_dir, template_brain='fsaverage',
         bipolar_electrodes=False, neccesary_files=None, remote_subject_dir_template='', output_files_post_fix='',
         overwrite=False, overwrite_annotation=False, write_only_cortical=False, write_only_subcortical=False,
-        enlarge_if_no_hit=False, n_jobs=6):
+        strech_to_dist=False, enlarge_if_no_hit=False, n_jobs=6):
 
     ok_subjects, bad_subjects = [], []
     results = {}
@@ -504,16 +523,17 @@ def run_for_all_subjects(subjects, atlas, error_radius, elc_length, subjects_dir
                         print_traceback=True)
                 check_for_annot_file(subject=subject, subjects_dir=subjects_dir, atlas=atlas, fsaverage=template_brain,
                     overwrite=overwrite_annotation, n_jobs=n_jobs)
-                elecs_names, elecs_pos = get_electrodes(subject, bipolar_electrodes)
-                elcs_ori = get_electrodes_orientation(elecs_names, elecs_pos)
+                elecs_names, elecs_pos, elecs_dists = get_electrodes(subject, bipolar_electrodes)
+                elcs_ori = get_electrodes_orientation(elecs_names, elecs_pos, bipolar_electrodes)
                 elecs = identify_roi_from_atlas(elecs_names, elecs_pos, elcs_ori,
-                    atlas=atlas, approx=error_radius, elc_length=elc_length,
-                    enlarge_if_no_hit=enlarge_if_no_hit, subjects_dir=subjects_dir,
-                    subject=subject, n_jobs=n_jobs)
+                    atlas=atlas, approx=error_radius, elc_length=elc_length, elecs_dists=elecs_dists,
+                    strech_to_dist=strech_to_dist, enlarge_if_no_hit=enlarge_if_no_hit,
+                    bipolar_electrodes=bipolar_electrodes, subjects_dir=subjects_dir, subject=subject, n_jobs=n_jobs)
                 results[subject] = elecs
                 ok_subjects.append(subject)
             except:
                 bad_subjects.append(subject)
+                logging.error('{}: {}'.format(subject, traceback.format_exc()))
                 print(traceback.format_exc())
 
     write_results_to_csv(results, atlas, post_fix=output_files_post_fix,
@@ -546,19 +566,22 @@ if __name__ == '__main__':
     neccesary_files = {'mri': ['aseg.mgz'], 'surf': ['rh.pial', 'lh.pial', 'rh.sphere.reg', 'lh.sphere.reg', 'lh.white', 'rh.white']}
     remote_subject_dir_template = {'template':'/space/huygens/1/users/mia/subjects/{subject}_SurferOutput', 'func':string.upper}
     template_brain = 'fsaverage5c'
-    subjects = get_subjects()
+    subjects = ['mg78'] # get_subjects()
     error_radius = 3
     elc_length = 4
-    bipolar_electrodes = True
-    output_files_post_fix = '_cigar_r_{}_l_{}{}'.format(error_radius, elc_length, '_bipolar' if bipolar_electrodes else '')
+    bipolar_electrodes = False
+    strech_to_dist = False
+    output_files_post_fix = '_cigar_r_{}_l_{}{}{}'.format(error_radius, elc_length,
+        '_bipolar' if bipolar_electrodes else '', '_stretch' if strech_to_dist else '')
     overwrite = True
     overwrite_annotation = False
-    write_only_cortical=False
-    write_only_subcortical=False
-    enlarge_if_no_hit=True
+    write_only_cortical = False
+    write_only_subcortical = False
+    enlarge_if_no_hit = True
     n_jobs = 6
+    logging.basicConfig(filename='errors.log',level=logging.ERROR)
 
     run_for_all_subjects(subjects, atlas, error_radius, elc_length,
         subjects_dir, template_brain, bipolar_electrodes, neccesary_files,
         remote_subject_dir_template, output_files_post_fix, overwrite, overwrite_annotation,
-        write_only_cortical, write_only_subcortical, enlarge_if_no_hit, n_jobs)
+        write_only_cortical, write_only_subcortical, strech_to_dist, enlarge_if_no_hit, n_jobs)
