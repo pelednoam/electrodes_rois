@@ -632,25 +632,31 @@ def check_for_necessary_files(subjects_dir, subject, neccesary_files):
     elecs_dir = get_electrodes_dir()
     elec_file = op.join(elecs_dir, '{}.csv'.format(subject))
     if not op.isfile(elec_file):
-        rename_electrodes_file(subjects_dir, subject, elec_file)
+        copy_electrodes_file(subjects_dir, subject, elec_file)
 
 
-def rename_electrodes_file(subjects_dir, subject, elec_file):
-    subject_elec_fname_pattern = op.join(subjects_dir, subject, 'electrodes', '{subject}_RAS.{postfix}')
-    if op.isfile(subject_elec_fname_pattern.format(subject=subject.upper(), postfix='csv')):
-        os.rename(subject_elec_fname_pattern.format(subject=subject.upper(), postfix='csv'),
-            subject_elec_fname_pattern.format(subject=subject, postfix='csv'))
-    elif op.isfile(subject_elec_fname_pattern.format(subject=subject.upper(), postfix='xlsx')):
-        os.rename(subject_elec_fname_pattern.format(subject=subject.upper(), postfix='xlsx'),
-            subject_elec_fname_pattern.format(subject=subject, postfix='xlsx'))
-    if op.isfile(subject_elec_fname_pattern.format(subject=subject, postfix='xlsx')):
-        utils.csv_from_excel(subject_elec_fname_pattern.format(subject=subject, postfix='xlsx'),
-                             subject_elec_fname_pattern.format(subject=subject, postfix='csv'))
-    if op.isfile(subject_elec_fname_pattern.format(subject=subject, postfix='csv')):
-        shutil.copyfile(subject_elec_fname_pattern.format(subject=subject, postfix='csv'), elec_file)
+def copy_electrodes_file(subjects_dir, subject, elec_file):
+    subject_elec_fname = op.join(subjects_dir, subject, 'electrodes', '{subject}_RAS.csv'.format(subject))
+    rename_and_convert_electrodes_file(subject, subjects_dir)
+    if op.isfile(subject_elec_fname):
+        shutil.copyfile(subject_elec_fname, elec_file)
     else:
-        raise Exception('{}: Electrodes file does not exist! {}'.format(subject,
-            subject_elec_fname_pattern.format(subject=subject, postfix='csv')))
+        raise Exception('{}: Electrodes file does not exist! {}'.format(subject, subject_elec_fname))
+
+
+def rename_and_convert_electrodes_file(subject, subjects_dir):
+    subject_elec_fname_pattern = op.join(subjects_dir, subject, 'electrodes', '{subject}_RAS.{postfix}')
+    subject_elec_fname_csv_upper = subject_elec_fname_pattern.format(subject=subject.upper(), postfix='csv')
+    subject_elec_fname_csv = subject_elec_fname_pattern.format(subject=subject, postfix='csv')
+    subject_elec_fname_xlsx_upper = subject_elec_fname_pattern.format(subject=subject.upper(), postfix='xlsx')
+    subject_elec_fname_xlsx = subject_elec_fname_pattern.format(subject=subject, postfix='xlsx')
+
+    if op.isfile(subject_elec_fname_csv_upper):
+        os.rename(subject_elec_fname_csv_upper, subject_elec_fname_csv)
+    elif op.isfile(subject_elec_fname_xlsx_upper):
+        os.rename(subject_elec_fname_xlsx_upper, subject_elec_fname_xlsx)
+    if op.isfile(subject_elec_fname_xlsx):
+        utils.csv_from_excel(subject_elec_fname_xlsx, subject_elec_fname_csv)
 
 
 def run_for_all_subjects(subjects, atlas, error_radius, elc_length, subjects_dir, template_brain='fsaverage',
