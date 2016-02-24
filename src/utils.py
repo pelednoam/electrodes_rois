@@ -2,6 +2,11 @@ import os
 import shutil
 import numpy as np
 import multiprocessing
+try:
+    import cPickle as pickle
+except:
+    import pickle
+
 
 def get_link_dir(links_dir, link_name, var_name, default_val='', throw_exception=False):
     val = os.path.join(links_dir, link_name)
@@ -85,10 +90,36 @@ def csv_from_excel(xlsx_fname, csv_fname):
     import csv
     wb = xlrd.open_workbook(xlsx_fname)
     sh = wb.sheet_by_name('Sheet1')
-    your_csv_file = open(csv_fname, 'wb')
-    wr = csv.writer(your_csv_file, quoting=csv.QUOTE_ALL)
+    csv_file = open(csv_fname, 'wb')
+    wr = csv.writer(csv_file, quoting=csv.QUOTE_ALL)
 
     for rownum in xrange(sh.nrows):
         wr.writerow([str(val) for val in sh.row_values(rownum)])
 
-    your_csv_file.close()
+    csv_file.close()
+
+
+def save(obj, fname):
+    with open(fname, 'wb') as fp:
+        # protocol=2 so we'll be able to load in python 2.7
+        pickle.dump(obj, fp)
+
+
+def load(fname):
+    with open(fname, 'rb') as fp:
+        obj = pickle.load(fp)
+    return obj
+
+
+class Bag( dict ):
+    """ a dict with d.key short for d["key"]
+        d = Bag( k=v ... / **dict / dict.items() / [(k,v) ...] )  just like dict
+    """
+        # aka Dotdict
+
+    def __init__(self, *args, **kwargs):
+        dict.__init__( self, *args, **kwargs )
+        self.__dict__ = self
+
+    def __getnewargs__(self):  # for cPickle.dump( d, file, protocol=-1)
+        return tuple(self)

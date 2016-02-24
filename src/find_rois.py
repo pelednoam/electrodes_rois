@@ -20,7 +20,7 @@ from src import utils
 LINKS_DIR = utils.get_links_dir()
 
 
-def identify_roi_from_atlas(elecs_names, elecs_pos, elcs_ori=None, approx=4, elc_length=1,
+def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elcs_ori=None, approx=4, elc_length=1,
     nei_dimensions=None, atlas=None, elecs_dists=None, strech_to_dist=False, enlarge_if_no_hit=False,
     bipolar_electrodes=False, subjects_dir=None, subject=None, aseg_atlas=True, n_jobs=6):
 
@@ -48,10 +48,8 @@ def identify_roi_from_atlas(elecs_names, elecs_pos, elcs_ori=None, approx=4, elc
 
     # load the surfaces and annotation
     # uses the pial surface, this change is pushed to MNE python
-    parcels, pia_verts = {}, {}
+    pia_verts = {}
     for hemi in ['rh', 'lh']:
-        # parcels[hemi] = mne.read_labels_from_annot(subject, parc=atlas, hemi=hemi,
-        #     subjects_dir=subjects_dir, surf_name='pial')
         pia_verts[hemi], _ = nib.freesurfer.read_geometry(
             op.join(subjects_dir, subject, 'surf', '{}.pial'.format(hemi)))
     pia = np.vstack((pia_verts['lh'], pia_verts['rh']))
@@ -64,11 +62,12 @@ def identify_roi_from_atlas(elecs_names, elecs_pos, elcs_ori=None, approx=4, elc
         elc_num, (elec_pos, elec_name, elc_ori, elc_dist) in enumerate(zip(elecs_pos, elecs_names, elcs_ori, elecs_dists))]
     N = len(elecs_data)
     elecs_data_chunks = utils.chunks(elecs_data, len(elecs_data) / n_jobs)
-    params = [(elecs_data_chunk, subject, aseg_data, lut, pia, len_lh_pia, parcels, approx, elc_length, nei_dimensions,
+    params = [(elecs_data_chunk, subject, labels, aseg_data, lut, pia, len_lh_pia, approx, elc_length, nei_dimensions,
                strech_to_dist, enlarge_if_no_hit, bipolar_electrodes, N) for elecs_data_chunk in elecs_data_chunks]
+    print('run with {} jobs'.format(n_jobs))
     results = utils.run_parallel(_find_elecs_roi_parallel, params, n_jobs)
     for results_chunk in results:
-        for regions, regions_hits, subcortical_regions, subcortical_hits in results_chunk:
+        for elec_name, regions, regions_hits, subcortical_regions, subcortical_hits in results_chunk:
             regions_probs = np.hstack((regions_hits, subcortical_hits)) / float(np.sum(regions_hits) + np.sum(subcortical_hits))
             if not np.allclose([np.sum(regions_probs)],[1.0]):
                 print('Warning!!! {}: sum(regions_probs) = {}!'.format(elec_name, sum(regions_probs)))
@@ -80,19 +79,19 @@ def identify_roi_from_atlas(elecs_names, elecs_pos, elcs_ori=None, approx=4, elc
 
 def _find_elecs_roi_parallel(params):
     results = []
-    elecs_data_chunk, subject, aseg_data, lut, pia, len_lh_pia, parcels, approx, elc_length, nei_dimensions,\
+    elecs_data_chunk, subject, labels, aseg_data, lut, pia, len_lh_pia, approx, elc_length, nei_dimensions,\
         strech_to_dist, enlarge_if_no_hit, bipolar_electrodes, N = params
     for elc_num, elec_pos, elec_name, elc_ori, elc_dist in elecs_data_chunk:
         print('{}: {} / {}'.format(elec_name, elc_num, N))
         regions, regions_hits, subcortical_regions, subcortical_hits = \
-            identify_roi_from_atlas_per_electrode(elec_pos, pia, len_lh_pia, atlas, parcels, lut,
+            identify_roi_from_atlas_per_electrode(labels, elec_pos, pia, len_lh_pia, atlas, lut,
                 aseg_data, approx, elc_length, nei_dimensions, elc_ori, elc_dist, strech_to_dist,
                 enlarge_if_no_hit, bipolar_electrodes, subjects_dir, subject, n_jobs=1)
-        results.append((regions, regions_hits, subcortical_regions, subcortical_hits))
+        results.append((elec_name, regions, regions_hits, subcortical_regions, subcortical_hits))
     return results
 
 
-def identify_roi_from_atlas_per_electrode(pos, pia, len_lh_pia, atlas, parcels, lut, aseg_data,
+def identify_roi_from_atlas_per_electrode(labels, pos, pia, len_lh_pia, atlas, lut, aseg_data,
       approx=4, elc_length=1, nei_dimensions=None, elc_ori=None, elc_dist=0, strech_to_dist=False,
       enlarge_if_no_hit=False, bipolar_electrodes=False, subjects_dir=None, subject=None, n_jobs=1):
     '''
@@ -147,16 +146,18 @@ def identify_roi_from_atlas_per_electrode(pos, pia, len_lh_pia, atlas, parcels, 
         _region_is_excluded = partial(region_is_excluded, compiled_excludes=compiled_excludes)
 
         regions, regions_hits = [], []
-        parcels_files = glob.glob(op.join(subjects_dir, subject, 'label', atlas, '*.label'))
+        # parcels_files = glob.glob(op.join(subjects_dir, subject, 'label', atlas, '*.label'))
 
-        files_chunks = utils.chunks(parcels_files, len(parcels_files) / n_jobs)
-        params = [(files_chunk, hemi_str, verts, elc_line, bins, approx, _region_is_excluded) for files_chunk in files_chunks]
-        results = utils.run_parallel(_calc_hits_parallel, params, n_jobs)
-        for chunk in results:
-            for parcel_name, hits in chunk:
-                if hits > 0:
-                    regions.append(parcel_name)
-                    regions_hits.append(hits)
+        # files_chunks = utils.chunks(parcels_files, len(parcels_files) / n_jobs)
+        # params = [(files_chunk, hemi_str, verts, elc_line, bins, approx, _region_is_excluded) for files_chunk in files_chunks]
+        # results = utils.run_parallel(_calc_hits_parallel, params, n_jobs)
+        # for chunk in results:
+        #     for parcel_name, hits in chunk:
+        results = calc_hits(labels, hemi_str, verts, elc_line, bins, approx, _region_is_excluded)
+        for parcel_name, hits in results:
+            if hits > 0:
+                regions.append(parcel_name)
+                regions_hits.append(hits)
 
         subcortical_regions, subcortical_hits = identify_roi_from_aparc(pos, elc_line, elc_length, lut, aseg_data, approx=approx,
             nei_dimensions=nei_dimensions, subcortical_only=True, excludes=excludes)
@@ -170,27 +171,49 @@ def identify_roi_from_atlas_per_electrode(pos, pia, len_lh_pia, atlas, parcels, 
     return regions, regions_hits, subcortical_regions, subcortical_hits
 
 
-def _calc_hits_parallel(chunk_params):
+def calc_hits(labels, hemi_str, surf_verts, elc_line, bins, approx, _region_is_excluded):
     res = []
-    files_chunk, hemi_str, surf_verts, elc_line, bins, approx, _region_is_excluded = chunk_params
     res.append(('', 0))
-    for parcel_file in files_chunk:
-        parcel = mne.read_label(parcel_file)
-        if parcel.hemi != hemi_str:
+    for label in labels:
+        label = utils.Bag(label)
+        # parcel = mne.read_label(parcel_file)
+        if label.hemi != hemi_str:
             continue
-        elif _region_is_excluded(str(parcel.name)):
+        elif _region_is_excluded(str(label.name)):
             continue
         else:
-            hits = calc_hits_in_neighbors_from_line(elc_line, surf_verts[parcel.vertices], bins, approx)
-        res.append((str(parcel.name), hits))
+            hits = calc_hits_in_neighbors_from_line(elc_line, surf_verts[label.vertices], bins, approx)
+        res.append((str(label.name), hits))
     return res
 
 
+def read_labels_vertices(subjects_dir, subject, atlas, overwrite=False, n_jobs=1):
+    res_file = op.join(subjects_dir, subject, 'label', '{}.pkl'.format(atlas))
+    if not overwrite and op.isfile(res_file):
+        labels = utils.load(res_file)
+    else:
+        labels_files = glob.glob(op.join(subjects_dir, subject, 'label', atlas, '*.label'))
+        files_chunks = utils.chunks(labels_files, len(labels_files) / n_jobs)
+        results = utils.run_parallel(_read_labels_vertices, files_chunks, n_jobs)
+        labels = []
+        for labels_chunk in results:
+            labels.extend(labels_chunk)
+        utils.save(labels, res_file)
+    return labels
 
-def parcels_volume_search(elc_line, pos, approx, dimensions):
-    neighb = calc_neighbors(pos, elc_length + approx, dimensions)
-    dists = np.min(cdist(elc_line, neighb), 0)
-    neighb = neighb[np.where(dists<approx)]
+
+def _read_labels_vertices(files_chunk):
+    labels = []
+    for label_file in files_chunk:
+        label = mne.read_label(label_file)
+        labels.append({'name': label.name, 'hemi': label.hemi, 'vertices': label.vertices})
+    return labels
+
+
+# def parcels_volume_search(elc_line, pos, approx, dimensions):
+#     neighb = calc_neighbors(pos, elc_length + approx, dimensions)
+#     dists = np.min(cdist(elc_line, neighb), 0)
+#     neighb = neighb[np.where(dists<approx)]
 
 
 def electrode_is_only_in_white_matter(regions, subcortical_regions):
@@ -212,6 +235,7 @@ def electrode_is_only_in_white_matter(regions, subcortical_regions):
 #     hits = len(ret_indices)
 
 
+#todo: don't have to calculate the hist if the dist is above some threshold
 def calc_hits_in_neighbors_from_line(line, points, neighb, approx):
     bins = [np.sort(np.unique(neighb[:, idim])) for idim in range(points.shape[1])]
     hist, bin_edges = np.histogramdd(points, bins=bins, normed=False)
@@ -555,49 +579,49 @@ def _morph_labels_parallel(params_chunks):
         if op.isfile(local_label_name) and overwrite:
             os.remove(local_label_name)
         if not op.isfile(local_label_name) or overwrite:
-            fs_label = mne.read_label(label_file)
+            fs_label = mne.read_label(label_fname)
             fs_label.values.fill(1.0)
             sub_label = fs_label.morph(fsaverage, subject, grade=None, n_jobs=n_jobs, subjects_dir=subjects_dir)
             sub_label.save(local_label_name)
 
 
-def labels_to_annot(subject, subjects_dir='', aparc_name='aparc250', labels_fol='', overwrite=True):
-    if subjects_dir=='':
-        subjects_dir = os.environ['SUBJECTS_DIR']
-    subject_dir = op.join(subjects_dir, subject)
-    labels_fol = op.join(subject_dir, 'label', aparc_name) if labels_fol=='' else labels_fol
-    labels = []
-    for label_file in glob.glob(op.join(labels_fol, '*.label')):
-        # print label_file
-        try:
-            label = mne.read_label(label_file)
-            labels.append(label)
-        except:
-            print('error reading the label!')
-            logging.error('labels_to_annot ({}): {}'.format(subject, traceback.format_exc()))
-            print(traceback.format_exc())
+# def labels_to_annot(subject, subjects_dir='', aparc_name='aparc250', labels_fol='', overwrite=True):
+#     if subjects_dir=='':
+#         subjects_dir = os.environ['SUBJECTS_DIR']
+#     subject_dir = op.join(subjects_dir, subject)
+#     labels_fol = op.join(subject_dir, 'label', aparc_name) if labels_fol=='' else labels_fol
+#     labels = []
+#     for label_file in glob.glob(op.join(labels_fol, '*.label')):
+#         # print label_file
+#         try:
+#             label = mne.read_label(label_file)
+#             labels.append(label)
+#         except:
+#             print('error reading the label!')
+#             logging.error('labels_to_annot ({}): {}'.format(subject, traceback.format_exc()))
+#             print(traceback.format_exc())
+#
+#     mne.write_labels_to_annot(subject=subject, labels=labels, parc=aparc_name, overwrite=overwrite,
+#                               subjects_dir=subjects_dir, surface='pial')
 
-    mne.write_labels_to_annot(subject=subject, labels=labels, parc=aparc_name, overwrite=overwrite,
-                              subjects_dir=subjects_dir, surface='pial')
 
-
-def get_all_labels_and_segmentations(subject, atlas):
-    percs, segs = [], []
-    all_segs = import_freesurfer_lut()['label']
-    excludes=['Unknown', 'unknown', 'Cerebral-Cortex', 'ctx']
-    compiled_excludes = re.compile('|'.join(excludes))
-    _region_is_excluded = partial(region_is_excluded, compiled_excludes=compiled_excludes)
-    for seg in all_segs:
-        if not _region_is_excluded(seg):
-            segs.append(seg)
-
-    for hemi in ['rh', 'lh']:
-        annot_file = op.join(subjects_dir, subject, 'label', '{}.{}.annot'.format(hemi, atlas))
-        labels = mne.read_labels_from_annot(subject, surf_name='pial', annot_fname=annot_file)
-        for label in labels:
-            percs.append(label.name)
-
-    return percs, segs
+# def get_all_labels_and_segmentations(subject, atlas):
+#     percs, segs = [], []
+#     all_segs = import_freesurfer_lut()['label']
+#     excludes=['Unknown', 'unknown', 'Cerebral-Cortex', 'ctx']
+#     compiled_excludes = re.compile('|'.join(excludes))
+#     _region_is_excluded = partial(region_is_excluded, compiled_excludes=compiled_excludes)
+#     for seg in all_segs:
+#         if not _region_is_excluded(seg):
+#             segs.append(seg)
+#
+#     for hemi in ['rh', 'lh']:
+#         annot_file = op.join(subjects_dir, subject, 'label', '{}.{}.annot'.format(hemi, atlas))
+#         labels = mne.read_labels_from_annot(subject, surf_name='pial', annot_fname=annot_file)
+#         for label in labels:
+#             percs.append(label.name)
+#
+#     return percs, segs
 
 
 def prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, local_subjects_dir, print_traceback=False):
@@ -636,7 +660,7 @@ def check_for_necessary_files(subjects_dir, subject, neccesary_files):
 
 
 def copy_electrodes_file(subjects_dir, subject, elec_file):
-    subject_elec_fname = op.join(subjects_dir, subject, 'electrodes', '{subject}_RAS.csv'.format(subject))
+    subject_elec_fname = op.join(subjects_dir, subject, 'electrodes', '{}_RAS.csv'.format(subject))
     rename_and_convert_electrodes_file(subject, subjects_dir)
     if op.isfile(subject_elec_fname):
         shutil.copyfile(subject_elec_fname, elec_file)
@@ -662,7 +686,7 @@ def rename_and_convert_electrodes_file(subject, subjects_dir):
 def run_for_all_subjects(subjects, atlas, error_radius, elc_length, subjects_dir, template_brain='fsaverage',
         bipolar_electrodes=False, neccesary_files=None, remote_subject_dir_template='', output_files_post_fix='',
         overwrite=False, overwrite_annotation=False, overwrite_labels=False, write_only_cortical=False, write_only_subcortical=False,
-        strech_to_dist=False, enlarge_if_no_hit=False, only_check_files=False, n_jobs=6):
+        strech_to_dist=False, enlarge_if_no_hit=False, only_check_files=False, overwrite_labels_pkl=False, n_jobs=6):
 
     ok_subjects, bad_subjects = [], []
     results = {}
@@ -670,18 +694,24 @@ def run_for_all_subjects(subjects, atlas, error_radius, elc_length, subjects_dir
         output_file = op.join(get_electrodes_dir(), '{}_{}_electrodes_all_rois{}.csv'.format(subject, atlas, output_files_post_fix))
         if not op.isfile(output_file) or overwrite:
             try:
-                check_for_necessary_files(subjects_dir, subject, neccesary_files)
-                check_for_annot_file(subject=subject, subjects_dir=subjects_dir, atlas=atlas, fsaverage=template_brain,
-                    overwrite_labels=overwrite_labels, overwrite_annot=overwrite_annotation, n_jobs=n_jobs)
-                if only_check_files:
-                    continue
-                elecs_names, elecs_pos, elecs_dists = get_electrodes(subject, bipolar_electrodes)
-                elcs_ori = get_electrodes_orientation(elecs_names, elecs_pos, bipolar_electrodes)
-                elecs = identify_roi_from_atlas(elecs_names, elecs_pos, elcs_ori,
-                    atlas=atlas, approx=error_radius, elc_length=elc_length, elecs_dists=elecs_dists,
-                    strech_to_dist=strech_to_dist, enlarge_if_no_hit=enlarge_if_no_hit,
-                    bipolar_electrodes=bipolar_electrodes, subjects_dir=subjects_dir, subject=subject,
-                    aseg_atlas=False, n_jobs=n_jobs)
+                results_fname = '{}_{}_electrodes_all_rois{}.pkl'.format(subject, atlas, output_files_post_fix)
+                if op.isfile(results_fname) and not overwrite:
+                    elecs = utils.load(results_fname)
+                else:
+                    check_for_necessary_files(subjects_dir, subject, neccesary_files)
+                    check_for_annot_file(subject=subject, subjects_dir=subjects_dir, atlas=atlas, fsaverage=template_brain,
+                        overwrite_labels=overwrite_labels, overwrite_annot=overwrite_annotation, n_jobs=n_jobs)
+                    if only_check_files:
+                        continue
+                    elecs_names, elecs_pos, elecs_dists = get_electrodes(subject, bipolar_electrodes)
+                    elcs_ori = get_electrodes_orientation(elecs_names, elecs_pos, bipolar_electrodes)
+                    labels = read_labels_vertices(subjects_dir, subject, atlas, overwrite_labels_pkl, n_jobs)
+                    elecs = identify_roi_from_atlas(labels, elecs_names, elecs_pos, elcs_ori,
+                        atlas=atlas, approx=error_radius, elc_length=elc_length, elecs_dists=elecs_dists,
+                        strech_to_dist=strech_to_dist, enlarge_if_no_hit=enlarge_if_no_hit,
+                        bipolar_electrodes=bipolar_electrodes, subjects_dir=subjects_dir, subject=subject,
+                        aseg_atlas=False, n_jobs=n_jobs)
+                    utils.save(elecs, op.join(get_electrodes_dir(), results_fname))
                 results[subject] = elecs
                 ok_subjects.append(subject)
             except:
@@ -720,10 +750,10 @@ if __name__ == '__main__':
     neccesary_files = {'mri': ['aseg.mgz'], 'surf': ['rh.pial', 'lh.pial', 'rh.sphere.reg', 'lh.sphere.reg', 'lh.white', 'rh.white']}
     remote_subject_dir_template = {'template':'/space/huygens/1/users/mia/subjects/{subject}_SurferOutput', 'func':string.upper}
     template_brain = 'fsaverage5c'
-    subjects = set(get_all_subjects(subjects_dir, 'mg', '_')) - set(['mg78', 'mg93', 'mg96']) # get_subjects()
+    subjects = set(get_all_subjects(subjects_dir, 'mg', '_')) # - set(['mg96']) # get_subjects()
     error_radius = 3
     elc_length = 4
-    bipolar_electrodes = False
+    bipolar_electrodes = True
     strech_to_dist = True # If bipolar, strech to the neighbours
     output_files_post_fix = '_cigar_r_{}_l_{}{}{}'.format(error_radius, elc_length,
         '_bipolar' if bipolar_electrodes else '', '_stretch' if strech_to_dist and bipolar_electrodes else '')
@@ -740,4 +770,4 @@ if __name__ == '__main__':
     run_for_all_subjects(subjects, atlas, error_radius, elc_length,
         subjects_dir, template_brain, bipolar_electrodes, neccesary_files,
         remote_subject_dir_template, output_files_post_fix, overwrite, overwrite_annotation, overwrite_labels,
-        write_only_cortical, write_only_subcortical, strech_to_dist, enlarge_if_no_hit, only_check_files, n_jobs)
+        write_only_cortical, write_only_subcortical, strech_to_dist, enlarge_if_no_hit, only_check_files, n_jobs=n_jobs)
