@@ -10,6 +10,7 @@ from mpl_toolkits.mplot3d import Axes3D
 
 SUBJECTS_DIR = '/homes/5/npeled/space3/subjects'
 COPY_FROM = '/homes/5/npeled/space3/Downloads/for_noam'
+COPY_FROM_2 = '/homes/5/npeled/space3/Downloads/SurfExtras'
 
 
 def copy_some_files():
@@ -27,6 +28,29 @@ def copy_some_files():
         else:
             print('copying {} to {}'.format(full_file_name, local_file))
             shutil.copyfile(full_file_name, local_file)
+
+
+def copy_some_files2():
+    neccesary_files = {'mri': ['aseg.mgz'], 'surf': ['rh.pial', 'lh.pial', 'rh.sphere.reg', 'lh.sphere.reg', 'lh.white', 'rh.white']}
+
+    for subject_folder in get_subfolders(COPY_FROM_2):
+        folder = os.path.split(subject_folder)[1]
+        subject = folder[:-4]
+        subject = subject.lower()
+        for full_file_name in glob.glob(os.path.join(COPY_FROM_2, subject_folder, '*.*')):
+            file_name = os.path.split(full_file_name)[1]
+            sub_folder = 'mri' if file_name in neccesary_files['mri'] else 'surf'
+            mkdirs(os.path.join(SUBJECTS_DIR, subject, sub_folder))
+            local_file = os.path.join(SUBJECTS_DIR, subject, sub_folder, file_name)
+            if os.path.isfile(local_file):
+                print('{} already exist'.format(local_file))
+            else:
+                print('copying {} to {}'.format(full_file_name, local_file))
+                shutil.copyfile(full_file_name, local_file)
+
+
+def get_subfolders(fol):
+    return [os.path.join(fol,subfol) for subfol in os.listdir(fol) if os.path.isdir(os.path.join(fol,subfol))]
 
 
 def mkdirs(path):
@@ -75,5 +99,6 @@ if __name__ == '__main__':
     # copy_some_files()
     # electrodes_npz_to_csv('/homes/5/npeled/space3/subjects/mg79/electrodes/electrodes_positions.npz',
     #     '/homes/5/npeled/space3/subjects/mg79/electrodes/mg79_RAS.csv')
-    check_cigar(4, 3)
+    # check_cigar(4, 3)
+    copy_some_files2()
     print('finish!')
