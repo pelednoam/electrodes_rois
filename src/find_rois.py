@@ -16,8 +16,7 @@ import shutil
 import string
 import logging
 from src import utils
-
-LINKS_DIR = utils.get_links_dir()
+from src import labels_utils as lu
 
 
 def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elcs_ori=None, approx=4, elc_length=1,
@@ -239,12 +238,15 @@ def electrode_is_only_in_white_matter(regions, subcortical_regions):
 def calc_hits_in_neighbors_from_line(line, points, neighb, approx):
     bins = [np.sort(np.unique(neighb[:, idim])) for idim in range(points.shape[1])]
     hist, bin_edges = np.histogramdd(points, bins=bins, normed=False)
-    hist_bin_centers_list = [bin_edges[d][:-1] + (bin_edges[d][1:] - bin_edges[d][:-1])/2.
-        for d in range(len(bin_edges))]
-    bin_centers = list(product(*hist_bin_centers_list))
-    dists = np.min(cdist(line, bin_centers), 0).reshape(hist.shape)
-    hits = len(np.where((hist > 0) & (dists<approx))[0])
-    return hits
+    if np.sum(hist > 0) == 0:
+        return 0
+    else:
+        hist_bin_centers_list = [bin_edges[d][:-1] + (bin_edges[d][1:] - bin_edges[d][:-1])/2.
+            for d in range(len(bin_edges))]
+        bin_centers = list(product(*hist_bin_centers_list))
+        dists = np.min(cdist(line, bin_centers), 0).reshape(hist.shape)
+        hits = len(np.where((hist > 0) & (dists<approx))[0])
+        return hits
 
 
 def identify_roi_from_aparc(pos, elc_line, elc_length, lut, aseg_data, approx=4, nei_dimensions=None,
@@ -480,6 +482,7 @@ def write_values(elecs, header, rois_arr, rois_names, probs_names, file_name):
     with open(file_name, 'w') as fp:
         writer = csv.writer(fp, delimiter=',')
         writer.writerow(header)
+        print('Writing {} with header length of {}'.format(file_name, len(header)))
         for elc in elecs:
             values = [elc['name']]
             for rois, rois_field, prob_field in zip(rois_arr, rois_names, probs_names):
@@ -490,6 +493,13 @@ def write_values(elecs, header, rois_arr, rois_names, probs_names, file_name):
                     else:
                         values.append(0.)
             writer.writerow(values)
+
+
+# def add_labels_per_electrodes_probabilities(subject, elecs_dir='', post_fix=''):
+#     if elecs_dir == '':
+#         elecs_dir = get_electrodes_dir()
+#     csv_fname = op.join(elecs_dir, '{}_{}_electrodes_all_rois{}.csv'.format(subject, atlas, post_fix))
+#     np.genfromtxt(csv_fname)
 
 
 def get_electrodes_orientation(elecs_names, elecs_pos, bipolar):
@@ -553,6 +563,9 @@ def check_for_annot_file(subject, subjects_dir, atlas, fsaverage='fsaverage5c', 
     annot_file = op.join(subjects_dir, subject, 'label', '{}.{}.annot'.format('{hemi}', atlas))
     if overwrite_labels or overwrite_annot or not op.isfile(annot_file.format(hemi='rh')) or not op.isfile(annot_file.format(hemi='lh')):
         morph_labels_from_fsaverage(subject, subjects_dir, atlas, n_jobs=n_jobs, fsaverage=fsaverage, overwrite=overwrite_labels)
+        backup_labels_fol = '{}_before_solve_collision'.format(atlas, fsaverage)
+        lu.solve_labels_collision(subject, subjects_dir, atlas, backup_labels_fol, n_jobs)
+        # lu.backup_annotation_files(subject, subjects_dir, atlas)
         # labels_to_annot(subject, subjects_dir, atlas, overwrite=overwrite_annot)
 
 
@@ -683,21 +696,33 @@ def rename_and_convert_electrodes_file(subject, subjects_dir):
         utils.csv_from_excel(subject_elec_fname_xlsx, subject_elec_fname_csv)
 
 
+# def find_electrodes_closets_label(subject, labels, bipolar_electrodes):
+#     elecs_names, elecs_pos, elecs_dists = get_electrodes(subject, bipolar_electrodes)
+#     pia_verts = {}
+#     for hemi in ['rh', 'lh']:
+#         pia_verts[hemi], _ = nib.freesurfer.read_geometry(
+#             op.join(subjects_dir, subject, 'surf', '{}.pial'.format(hemi)))
+#     pia = np.vstack((pia_verts['lh'], pia_verts['rh']))
+
+
 def run_for_all_subjects(subjects, atlas, error_radius, elc_length, subjects_dir, template_brain='fsaverage',
         bipolar_electrodes=False, neccesary_files=None, remote_subject_dir_template='', output_files_post_fix='',
         overwrite=False, overwrite_annotation=False, overwrite_labels=False, write_only_cortical=False, write_only_subcortical=False,
-        strech_to_dist=False, enlarge_if_no_hit=False, only_check_files=False, overwrite_labels_pkl=False, n_jobs=6):
+        strech_to_dist=False, enlarge_if_no_hit=False, only_check_files=False, overwrite_labels_pkl=False,
+        overwrite_csv=False, n_jobs=6):
 
     ok_subjects, bad_subjects = [], []
     results = {}
     for subject in subjects:
         output_file = op.join(get_electrodes_dir(), '{}_{}_electrodes_all_rois{}.csv'.format(subject, atlas, output_files_post_fix))
-        if not op.isfile(output_file) or overwrite:
+        if not op.isfile(output_file) or overwrite_csv:
             try:
-                results_fname = '{}_{}_electrodes_all_rois{}.pkl'.format(subject, atlas, output_files_post_fix)
+                results_fname = op.join(get_electrodes_dir(), '{}_{}_electrodes_all_rois{}.pkl'.format(
+                    subject, atlas, output_files_post_fix))
                 if op.isfile(results_fname) and not overwrite:
                     elecs = utils.load(results_fname)
                 else:
+                    print('****************** {} ******************'.format(subject))
                     check_for_necessary_files(subjects_dir, subject, neccesary_files)
                     check_for_annot_file(subject=subject, subjects_dir=subjects_dir, atlas=atlas, fsaverage=template_brain,
                         overwrite_labels=overwrite_labels, overwrite_annot=overwrite_annotation, n_jobs=n_jobs)
@@ -711,7 +736,7 @@ def run_for_all_subjects(subjects, atlas, error_radius, elc_length, subjects_dir
                         strech_to_dist=strech_to_dist, enlarge_if_no_hit=enlarge_if_no_hit,
                         bipolar_electrodes=bipolar_electrodes, subjects_dir=subjects_dir, subject=subject,
                         aseg_atlas=False, n_jobs=n_jobs)
-                    utils.save(elecs, op.join(get_electrodes_dir(), results_fname))
+                    utils.save(elecs, results_fname)
                 results[subject] = elecs
                 ok_subjects.append(subject)
             except:
@@ -719,6 +744,7 @@ def run_for_all_subjects(subjects, atlas, error_radius, elc_length, subjects_dir
                 logging.error('{}: {}'.format(subject, traceback.format_exc()))
                 print(traceback.format_exc())
 
+    # Write the results for all the subjects at once, to have a common labeling
     write_results_to_csv(results, atlas, post_fix=output_files_post_fix,
         write_only_cortical=write_only_cortical, write_only_subcortical=write_only_subcortical)
 
@@ -750,13 +776,10 @@ if __name__ == '__main__':
     neccesary_files = {'mri': ['aseg.mgz'], 'surf': ['rh.pial', 'lh.pial', 'rh.sphere.reg', 'lh.sphere.reg', 'lh.white', 'rh.white']}
     remote_subject_dir_template = {'template':'/space/huygens/1/users/mia/subjects/{subject}_SurferOutput', 'func':string.upper}
     template_brain = 'fsaverage5c'
-    subjects = set(get_all_subjects(subjects_dir, 'mg', '_')) # - set(['mg96']) # get_subjects()
+    subjects = ['mg96'] # set(get_all_subjects(subjects_dir, 'mg', '_')) - set(['mg63', 'mg94']) # get_subjects()
     error_radius = 3
     elc_length = 4
-    bipolar_electrodes = True
     strech_to_dist = True # If bipolar, strech to the neighbours
-    output_files_post_fix = '_cigar_r_{}_l_{}{}{}'.format(error_radius, elc_length,
-        '_bipolar' if bipolar_electrodes else '', '_stretch' if strech_to_dist and bipolar_electrodes else '')
     overwrite = True
     overwrite_annotation = False
     overwrite_labels = False
@@ -764,10 +787,16 @@ if __name__ == '__main__':
     write_only_subcortical = False
     enlarge_if_no_hit = True
     only_check_files = False
+    overwrite_labels_pkl = True
+    overwrite_csv = True
     n_jobs = 6
     logging.basicConfig(filename='errors.log',level=logging.ERROR)
 
-    run_for_all_subjects(subjects, atlas, error_radius, elc_length,
-        subjects_dir, template_brain, bipolar_electrodes, neccesary_files,
-        remote_subject_dir_template, output_files_post_fix, overwrite, overwrite_annotation, overwrite_labels,
-        write_only_cortical, write_only_subcortical, strech_to_dist, enlarge_if_no_hit, only_check_files, n_jobs=n_jobs)
+    for bipolar_electrodes in [False]:
+        output_files_post_fix = '_cigar_r_{}_l_{}{}{}'.format(error_radius, elc_length,
+            '_bipolar' if bipolar_electrodes else '', '_stretch' if strech_to_dist and bipolar_electrodes else '')
+        run_for_all_subjects(subjects, atlas, error_radius, elc_length,
+            subjects_dir, template_brain, bipolar_electrodes, neccesary_files,
+            remote_subject_dir_template, output_files_post_fix, overwrite, overwrite_annotation, overwrite_labels,
+            write_only_cortical, write_only_subcortical, strech_to_dist, enlarge_if_no_hit, only_check_files,
+            overwrite_labels_pkl=overwrite_labels_pkl, overwrite_csv=overwrite_csv, n_jobs=n_jobs)

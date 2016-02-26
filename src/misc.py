@@ -1,3 +1,4 @@
+from surfer import Brain
 import glob
 import os
 import shutil
@@ -95,10 +96,21 @@ def check_cigar(elc_length, r):
     ax.scatter(points[inside, 0], points[inside, 1], points[inside, 2], c='red', edgecolors='none', alpha=0.3)
     plt.show()
 
+
+def check_labels(subject, hemi, atlas):
+    brain = Brain(subject, hemi, 'pial', subjects_dir=SUBJECTS_DIR)
+    labels = glob.glob(os.path.join(SUBJECTS_DIR, subject, 'label', atlas, '*.label'))
+    for label_fname in labels:
+        if label_fname[-8:-6] == hemi:
+            brain.add_label(label_fname, borders=True)
+    brain.save_image(os.path.join(SUBJECTS_DIR, subject, 'label', '{}_{}_labels.png'.format(atlas, hemi)))
+
+
 if __name__ == '__main__':
     # copy_some_files()
     # electrodes_npz_to_csv('/homes/5/npeled/space3/subjects/mg79/electrodes/electrodes_positions.npz',
     #     '/homes/5/npeled/space3/subjects/mg79/electrodes/mg79_RAS.csv')
     # check_cigar(4, 3)
-    copy_some_files2()
+    # copy_some_files2()
+    check_labels('mg96', 'rh', 'laus250')
     print('finish!')
