@@ -66,7 +66,8 @@ def backup_annotation_files(subject, subjects_dir, aparc_name, backup_str='backu
     for hemi in HEMIS:
         annot_fname = op.join(subjects_dir, subject, 'label', '{}.{}.annot'.format(hemi, aparc_name))
         if op.isfile(annot_fname):
-            shutil.copyfile(op.join(subjects_dir, subject, 'label', '{}.{}.{}.annot'.format(hemi, aparc_name, backup_str)))
+            shutil.copyfile(op.join(subjects_dir, subject, 'label', '{}.{}.annot'.format(hemi, aparc_name)),
+                            op.join(subjects_dir, subject, 'label', '{}.{}.{}.annot'.format(hemi, aparc_name, backup_str)),)
 
 
 if __name__ == '__main__':
