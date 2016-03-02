@@ -18,6 +18,7 @@ import logging
 from src import utils
 from src import labels_utils as lu
 
+LINKS_DIR = utils.get_links_dir()
 
 def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elcs_ori=None, approx=4, elc_length=1,
     nei_dimensions=None, atlas=None, elecs_dists=None, strech_to_dist=False, enlarge_if_no_hit=False,
@@ -42,7 +43,8 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elcs_ori=None, appro
             print('{} doesnot exist!'.format(aseg_atlas_fname))
     if not op.isfile(asegf):
         asegf = op.join(subjects_dir, subject, 'mri', 'aparc+aseg.mgz')
-    aseg_data = nib.load(asegf).get_data()
+    aseg = nib.load(asegf)
+    aseg_data = aseg.get_data()
     lut = import_freesurfer_lut(lut_fname)
 
     # load the surfaces and annotation
@@ -186,17 +188,20 @@ def calc_hits(labels, hemi_str, surf_verts, elc_line, bins, approx, _region_is_e
     return res
 
 
-def read_labels_vertices(subjects_dir, subject, atlas, overwrite=False, n_jobs=1):
+def read_labels_vertices(subjects_dir, subject, atlas, read_labels_from_annotation=False, overwrite=False, n_jobs=1):
     res_file = op.join(subjects_dir, subject, 'label', '{}.pkl'.format(atlas))
     if not overwrite and op.isfile(res_file):
         labels = utils.load(res_file)
     else:
-        labels_files = glob.glob(op.join(subjects_dir, subject, 'label', atlas, '*.label'))
-        files_chunks = utils.chunks(labels_files, len(labels_files) / n_jobs)
-        results = utils.run_parallel(_read_labels_vertices, files_chunks, n_jobs)
-        labels = []
-        for labels_chunk in results:
-            labels.extend(labels_chunk)
+        if read_labels_from_annotation:
+            labels = mne.read_labels_from_annot(subject, atlas)
+        else:
+            labels_files = glob.glob(op.join(subjects_dir, subject, 'label', atlas, '*.label'))
+            files_chunks = utils.chunks(labels_files, len(labels_files) / n_jobs)
+            results = utils.run_parallel(_read_labels_vertices, files_chunks, n_jobs)
+            labels = []
+            for labels_chunk in results:
+                labels.extend(labels_chunk)
         utils.save(labels, res_file)
     return labels
 
@@ -289,7 +294,7 @@ def identify_roi_from_aparc(pos, elc_line, elc_length, lut, aseg_data, approx=4,
         # regions = exclude_regions(regions, excludes)
         cnt = Counter(regions)
         regions, hits = [], []
-        for region, count in cnt.iteritems():
+        for region, count in cnt.items():
             regions.append(region)
             hits.append(count)
         return regions, hits
@@ -437,8 +442,8 @@ def get_electrodes(subject, bipolar=False, elecs_dir='', delimiter=','):
 def fix_str_items_in_csv(csv):
     lines = []
     for line in csv:
-        fix_line = map(lambda x: str(x).replace('"', ''), line)
-        if not np.all([len(v)==0 for v in fix_line[1:]]):
+        fix_line = list(map(lambda x: str(x).replace('"', ''), line))
+        if not np.all([len(v) == 0 for v in fix_line[1:]]):
             lines.append(fix_line)
     return np.array(lines)
 
@@ -446,6 +451,7 @@ def fix_str_items_in_csv(csv):
 def get_electrodes_dir():
     curr_dir = op.dirname(op.realpath(__file__))
     elec_dir = op.join(op.split(curr_dir)[0], 'electrodes')
+    utils.make_dir(elec_dir)
     return elec_dir
 
 
@@ -456,14 +462,14 @@ def write_results_to_csv(results, atlas, elecs_dir='', post_fix='',
         elecs_dir = get_electrodes_dir()
 
     cortical_rois, subcortical_rois = [], []
-    for elecs in results.itervalues():
+    for elecs in results.items():
         for elc in elecs:
             cortical_rois.extend(elc['cortical_rois'])
             subcortical_rois.extend(elc['subcortical_rois'])
     cortical_rois = list(np.unique(cortical_rois))
     subcortical_rois = list(np.unique(subcortical_rois))
 
-    for subject, elecs in results.iteritems():
+    for subject, elecs in results.items():
         write_values(elecs, ['electrode'] + cortical_rois + subcortical_rois, [cortical_rois, subcortical_rois],
             ['cortical_rois','subcortical_rois'], ['cortical_probs', 'subcortical_probs'],
             op.join(elecs_dir, '{}_{}_electrodes_all_rois{}.csv'.format(subject, atlas, post_fix)))
@@ -559,9 +565,15 @@ def get_all_subjects(subjects_dir, prefix, exclude_substr):
     return subjects
 
 
-def check_for_annot_file(subject, subjects_dir, atlas, fsaverage='fsaverage5c', overwrite_labels=False, overwrite_annot=False, n_jobs=6):
+def check_for_annot_file(subject, subjects_dir, atlas, fsaverage='fsaverage5c', overwrite_labels=False,
+        overwrite_annot=False, read_labels_from_annotation=False, n_jobs=6):
     annot_file = op.join(subjects_dir, subject, 'label', '{}.{}.annot'.format('{hemi}', atlas))
-    if overwrite_labels or overwrite_annot or not op.isfile(annot_file.format(hemi='rh')) or not op.isfile(annot_file.format(hemi='lh')):
+    if read_labels_from_annotation and op.isfile(annot_file.format(hemi='rh')) and \
+            op.isfile(annot_file.format(hemi='lh')):
+        # Nothing to do, read the labels from an existing annotation file
+        return
+    if overwrite_labels or overwrite_annot or not op.isfile(annot_file.format(hemi='rh')) or not \
+            op.isfile(annot_file.format(hemi='lh')):
         morph_labels_from_fsaverage(subject, subjects_dir, atlas, n_jobs=n_jobs, fsaverage=fsaverage, overwrite=overwrite_labels)
         backup_labels_fol = '{}_before_solve_collision'.format(atlas, fsaverage)
         lu.solve_labels_collision(subject, subjects_dir, atlas, backup_labels_fol, n_jobs)
@@ -639,7 +651,7 @@ def _morph_labels_parallel(params_chunks):
 
 def prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, local_subjects_dir, print_traceback=False):
     local_subject_dir = op.join(local_subjects_dir, subject)
-    for fol, files in neccesary_files.iteritems():
+    for fol, files in neccesary_files.items():
         if not op.isdir(op.join(local_subject_dir, fol)):
             os.makedirs(op.join(local_subject_dir, fol))
         for file_name in files:
@@ -652,7 +664,7 @@ def prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, 
                 if print_traceback:
                     print(traceback.format_exc())
     all_files_exists = True
-    for fol, files in neccesary_files.iteritems():
+    for fol, files in neccesary_files.items():
         for file_name in files:
             if not op.isfile(op.join(local_subject_dir, fol, file_name)):
                 print("The file {} doesn't exist in the local subjects folder!!!".format(file_name))
@@ -674,7 +686,8 @@ def check_for_necessary_files(subjects_dir, subject, neccesary_files):
 
 def copy_electrodes_file(subjects_dir, subject, elec_file):
     subject_elec_fname = op.join(subjects_dir, subject, 'electrodes', '{}_RAS.csv'.format(subject))
-    rename_and_convert_electrodes_file(subject, subjects_dir)
+    if not op.isfile(subject_elec_fname):
+        rename_and_convert_electrodes_file(subject, subjects_dir)
     if op.isfile(subject_elec_fname):
         shutil.copyfile(subject_elec_fname, elec_file)
     else:
@@ -692,7 +705,7 @@ def rename_and_convert_electrodes_file(subject, subjects_dir):
         os.rename(subject_elec_fname_csv_upper, subject_elec_fname_csv)
     elif op.isfile(subject_elec_fname_xlsx_upper):
         os.rename(subject_elec_fname_xlsx_upper, subject_elec_fname_xlsx)
-    if op.isfile(subject_elec_fname_xlsx):
+    if op.isfile(subject_elec_fname_xlsx) and not op.isfile(subject_elec_fname_csv):
         utils.csv_from_excel(subject_elec_fname_xlsx, subject_elec_fname_csv)
 
 
@@ -709,7 +722,7 @@ def run_for_all_subjects(subjects, atlas, error_radius, elc_length, subjects_dir
         bipolar_electrodes=False, neccesary_files=None, remote_subject_dir_template='', output_files_post_fix='',
         overwrite=False, overwrite_annotation=False, overwrite_labels=False, write_only_cortical=False, write_only_subcortical=False,
         strech_to_dist=False, enlarge_if_no_hit=False, only_check_files=False, overwrite_labels_pkl=False,
-        overwrite_csv=False, n_jobs=6):
+        overwrite_csv=False, read_labels_from_annotation=False, n_jobs=6):
 
     ok_subjects, bad_subjects = [], []
     results = {}
@@ -725,12 +738,14 @@ def run_for_all_subjects(subjects, atlas, error_radius, elc_length, subjects_dir
                     print('****************** {} ******************'.format(subject))
                     check_for_necessary_files(subjects_dir, subject, neccesary_files)
                     check_for_annot_file(subject=subject, subjects_dir=subjects_dir, atlas=atlas, fsaverage=template_brain,
-                        overwrite_labels=overwrite_labels, overwrite_annot=overwrite_annotation, n_jobs=n_jobs)
+                        overwrite_labels=overwrite_labels, overwrite_annot=overwrite_annotation, n_jobs=n_jobs,
+                        read_labels_from_annotation=read_labels_from_annotation)
                     if only_check_files:
                         continue
                     elecs_names, elecs_pos, elecs_dists = get_electrodes(subject, bipolar_electrodes)
                     elcs_ori = get_electrodes_orientation(elecs_names, elecs_pos, bipolar_electrodes)
-                    labels = read_labels_vertices(subjects_dir, subject, atlas, overwrite_labels_pkl, n_jobs)
+                    labels = read_labels_vertices(subjects_dir, subject, atlas, read_labels_from_annotation,
+                        overwrite_labels_pkl, n_jobs)
                     elecs = identify_roi_from_atlas(labels, elecs_names, elecs_pos, elcs_ori,
                         atlas=atlas, approx=error_radius, elc_length=elc_length, elecs_dists=elecs_dists,
                         strech_to_dist=strech_to_dist, enlarge_if_no_hit=enlarge_if_no_hit,
@@ -769,12 +784,12 @@ def build_remote_subject_dir(remote_subject_dir_template, subject):
 if __name__ == '__main__':
     subjects_dir = utils.get_link_dir(LINKS_DIR, 'subjects', 'SUBJECTS_DIR')
     freesurfer_home = utils.get_link_dir(LINKS_DIR, 'freesurfer', 'FREESURFER_HOME')
-    blender_dir = op.join(LINKS_DIR, 'mmvt')
+    blender_dir = utils.get_link_dir(LINKS_DIR, 'mmvt')
     os.environ['SUBJECTS_DIR'] = subjects_dir
     os.environ['FREESURFER_HOME'] = freesurfer_home
-    atlas = 'laus250'
+    atlas = 'aparc.DKTatlas40' #'laus250'
     neccesary_files = {'mri': ['aseg.mgz'], 'surf': ['rh.pial', 'lh.pial', 'rh.sphere.reg', 'lh.sphere.reg', 'lh.white', 'rh.white']}
-    remote_subject_dir_template = {'template':'/space/huygens/1/users/mia/subjects/{subject}_SurferOutput', 'func':string.upper}
+    remote_subject_dir_template = {'template':'/space/huygens/1/users/mia/subjects/{subject}_SurferOutput', 'func': lambda x: x.upper()}
     template_brain = 'fsaverage5c'
     subjects = ['mg96'] # set(get_all_subjects(subjects_dir, 'mg', '_')) - set(['mg63', 'mg94']) # get_subjects()
     error_radius = 3
@@ -789,7 +804,13 @@ if __name__ == '__main__':
     only_check_files = False
     overwrite_labels_pkl = True
     overwrite_csv = True
-    n_jobs = 6
+    read_labels_from_annotation = True
+    cpu_num = utils.cpu_count()
+    if cpu_num <= 2:
+        n_jobs = 1
+    else:
+        n_jobs = cpu_num - 2
+    print('n_jobs: {}'.format(n_jobs))
     logging.basicConfig(filename='errors.log',level=logging.ERROR)
 
     for bipolar_electrodes in [False]:
@@ -799,4 +820,5 @@ if __name__ == '__main__':
             subjects_dir, template_brain, bipolar_electrodes, neccesary_files,
             remote_subject_dir_template, output_files_post_fix, overwrite, overwrite_annotation, overwrite_labels,
             write_only_cortical, write_only_subcortical, strech_to_dist, enlarge_if_no_hit, only_check_files,
-            overwrite_labels_pkl=overwrite_labels_pkl, overwrite_csv=overwrite_csv, n_jobs=n_jobs)
+            overwrite_labels_pkl=overwrite_labels_pkl, overwrite_csv=overwrite_csv,
+            read_labels_from_annotation=read_labels_from_annotation, n_jobs=n_jobs)

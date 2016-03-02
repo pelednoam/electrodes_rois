@@ -8,8 +8,11 @@ except:
     import pickle
 
 
-def get_link_dir(links_dir, link_name, var_name, default_val='', throw_exception=False):
+def get_link_dir(links_dir, link_name, var_name='', default_val='', throw_exception=False):
     val = os.path.join(links_dir, link_name)
+    # check if this is a windows folder shortcup
+    if os.path.isfile('{}.lnk'.format(val)):
+        val = read_windows_dir_shortcut('{}.lnk'.format(val))
     if not os.path.isdir(val) and default_val != '':
         val = default_val
     if not os.path.isdir(val):
@@ -93,7 +96,7 @@ def csv_from_excel(xlsx_fname, csv_fname):
     csv_file = open(csv_fname, 'wb')
     wr = csv.writer(csv_file, quoting=csv.QUOTE_ALL)
 
-    for rownum in xrange(sh.nrows):
+    for rownum in range(sh.nrows):
         wr.writerow([str(val) for val in sh.row_values(rownum)])
 
     csv_file.close()
@@ -123,3 +126,48 @@ class Bag( dict ):
 
     def __getnewargs__(self):  # for cPickle.dump( d, file, protocol=-1)
         return tuple(self)
+
+
+# From http://stackoverflow.com/a/28952464/1060738
+def read_windows_dir_shortcut(dir_path):
+    import struct
+    try:
+        with open(dir_path, 'rb') as stream:
+            content = stream.read()
+
+            # skip first 20 bytes (HeaderSize and LinkCLSID)
+            # read the LinkFlags structure (4 bytes)
+            lflags = struct.unpack('I', content[0x14:0x18])[0]
+            position = 0x18
+
+            # if the HasLinkTargetIDList bit is set then skip the stored IDList
+            # structure and header
+            if (lflags & 0x01) == 1:
+                position = struct.unpack('H', content[0x4C:0x4E])[0] + 0x4E
+
+            last_pos = position
+            position += 0x04
+
+            # get how long the file information is (LinkInfoSize)
+            length = struct.unpack('I', content[last_pos:position])[0]
+
+            # skip 12 bytes (LinkInfoHeaderSize, LinkInfoFlags, and VolumeIDOffset)
+            position += 0x0C
+
+            # go to the LocalBasePath position
+            lbpos = struct.unpack('I', content[position:position+0x04])[0]
+            position = last_pos + lbpos
+
+            # read the string at the given position of the determined length
+            size= (length + last_pos) - position - 0x02
+            temp = struct.unpack('c' * size, content[position:position+size])
+            target = ''.join([chr(ord(a)) for a in temp])
+    except:
+        # could not read the file
+        target = None
+
+    return target
+
+
+def cpu_count():
+    return multiprocessing.cpu_count()
