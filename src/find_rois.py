@@ -43,9 +43,14 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elcs_ori=None, appro
             print('{} doesnot exist!'.format(aseg_atlas_fname))
     if not op.isfile(asegf):
         asegf = op.join(subjects_dir, subject, 'mri', 'aparc+aseg.mgz')
-    aseg = nib.load(asegf)
-    aseg_data = aseg.get_data()
-    lut = import_freesurfer_lut(lut_fname)
+    try:
+        aseg = nib.load(asegf)
+        aseg_data = aseg.get_data()
+    except:
+        print('Error in loading aseg file!')
+        aseg_data = None
+
+    lut = import_freesurfer_lut(subjects_dir, lut_fname)
 
     # load the surfaces and annotation
     # uses the pial surface, this change is pushed to MNE python
@@ -194,7 +199,9 @@ def read_labels_vertices(subjects_dir, subject, atlas, read_labels_from_annotati
         labels = utils.load(res_file)
     else:
         if read_labels_from_annotation:
-            labels = mne.read_labels_from_annot(subject, atlas)
+            annot_labels = mne.read_labels_from_annot(subject, atlas)
+            labels = list([{'name': label.name, 'hemi': label.hemi, 'vertices': label.vertices}
+                           for label in annot_labels])
         else:
             labels_files = glob.glob(op.join(subjects_dir, subject, 'label', atlas, '*.label'))
             files_chunks = utils.chunks(labels_files, len(labels_files) / n_jobs)
@@ -323,7 +330,7 @@ def identify_roi_from_aparc(pos, elc_line, elc_length, lut, aseg_data, approx=4,
     return find_neighboring_regions(ras_pos, elc_length, ras_elc_line, aseg_data, lut, approx, nei_dimensions, excludes)
 
 
-def import_freesurfer_lut(fs_lut=''):
+def import_freesurfer_lut(subjects_dir, fs_lut=''):
     """
     Import Look-up Table with colors and labels for anatomical regions.
     It's necessary that Freesurfer is installed and that the environmental
@@ -349,7 +356,10 @@ def import_freesurfer_lut(fs_lut=''):
         except KeyError:
             raise OSError('FREESURFER_HOME not found')
         else:
-            fs_lut = op.join(fs_home, 'FreeSurferColorLUT.txt')
+            if fs_home != '':
+                fs_lut = op.join(fs_home, 'FreeSurferColorLUT.txt')
+            else:
+                fs_lut = op.join(subjects_dir, 'FreeSurferColorLUT.txt')
 
     idx = np.genfromtxt(fs_lut, dtype=None, usecols=(0))
     label = np.genfromtxt(fs_lut, dtype=None, usecols=(1))
