@@ -47,6 +47,8 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elcs_ori=None, appro
     try:
         aseg = nib.load(asegf)
         aseg_data = aseg.get_data()
+        np.save(op.join(subjects_dir, subject, 'mri', 'aseg.npy'), aseg_data)
+        return
     except:
         print('!!!!! Error in loading aseg file !!!!! ')
         print('!!!!! No subcortical labels !!!!!')
