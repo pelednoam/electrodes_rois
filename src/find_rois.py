@@ -822,7 +822,7 @@ if __name__ == '__main__':
     read_labels_from_annotation = True
     cpu_num = utils.cpu_count()
     if cpu_num <= 2:
-        n_jobs = cpu_num
+        n_jobs = 1
     else:
         n_jobs = cpu_num - 2
     print('n_jobs: {}'.format(n_jobs))
