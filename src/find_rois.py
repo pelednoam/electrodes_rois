@@ -20,6 +20,7 @@ from src import labels_utils as lu
 
 LINKS_DIR = utils.get_links_dir()
 
+
 def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elcs_ori=None, approx=4, elc_length=1,
     nei_dimensions=None, atlas=None, elecs_dists=None, strech_to_dist=False, enlarge_if_no_hit=False,
     bipolar_electrodes=False, subjects_dir=None, subject=None, aseg_atlas=True, n_jobs=6):
@@ -47,7 +48,8 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elcs_ori=None, appro
         aseg = nib.load(asegf)
         aseg_data = aseg.get_data()
     except:
-        print('Error in loading aseg file!')
+        print('!!!!! Error in loading aseg file !!!!! ')
+        print('!!!!! No subcortical labels !!!!!')
         aseg_data = None
 
     lut = import_freesurfer_lut(subjects_dir, lut_fname)
@@ -68,7 +70,7 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elcs_ori=None, appro
         elc_num, (elec_pos, elec_name, elc_ori, elc_dist) in enumerate(zip(elecs_pos, elecs_names, elcs_ori, elecs_dists))]
     N = len(elecs_data)
     elecs_data_chunks = utils.chunks(elecs_data, len(elecs_data) / n_jobs)
-    params = [(elecs_data_chunk, subject, labels, aseg_data, lut, pia, len_lh_pia, approx, elc_length, nei_dimensions,
+    params = [(elecs_data_chunk, subject, subjects_dir, labels, atlas, aseg_data, lut, pia, len_lh_pia, approx, elc_length, nei_dimensions,
                strech_to_dist, enlarge_if_no_hit, bipolar_electrodes, N) for elecs_data_chunk in elecs_data_chunks]
     print('run with {} jobs'.format(n_jobs))
     results = utils.run_parallel(_find_elecs_roi_parallel, params, n_jobs)
@@ -85,8 +87,8 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elcs_ori=None, appro
 
 def _find_elecs_roi_parallel(params):
     results = []
-    elecs_data_chunk, subject, labels, aseg_data, lut, pia, len_lh_pia, approx, elc_length, nei_dimensions,\
-        strech_to_dist, enlarge_if_no_hit, bipolar_electrodes, N = params
+    elecs_data_chunk, subject, subjects_dir, labels, atlas, aseg_data, lut, pia, len_lh_pia, approx, elc_length,\
+        nei_dimensions, strech_to_dist, enlarge_if_no_hit, bipolar_electrodes, N = params
     for elc_num, elec_pos, elec_name, elc_ori, elc_dist in elecs_data_chunk:
         print('{}: {} / {}'.format(elec_name, elc_num, N))
         regions, regions_hits, subcortical_regions, subcortical_hits = \
@@ -165,8 +167,11 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia, len_lh_pia, atlas, l
                 regions.append(parcel_name)
                 regions_hits.append(hits)
 
-        subcortical_regions, subcortical_hits = identify_roi_from_aparc(pos, elc_line, elc_length, lut, aseg_data, approx=approx,
-            nei_dimensions=nei_dimensions, subcortical_only=True, excludes=excludes)
+        if aseg_data is not None:
+            subcortical_regions, subcortical_hits = identify_roi_from_aparc(pos, elc_line, elc_length, lut, aseg_data,
+                approx=approx, nei_dimensions=nei_dimensions, subcortical_only=True, excludes=excludes)
+        else:
+            subcortical_regions, subcortical_hits = [], []
 
         we_have_a_hit = not electrode_is_only_in_white_matter(regions, subcortical_regions) or not enlarge_if_no_hit
         if not we_have_a_hit:
@@ -472,7 +477,7 @@ def write_results_to_csv(results, atlas, elecs_dir='', post_fix='',
         elecs_dir = get_electrodes_dir()
 
     cortical_rois, subcortical_rois = [], []
-    for elecs in results.items():
+    for elecs in results.values():
         for elc in elecs:
             cortical_rois.extend(elc['cortical_rois'])
             subcortical_rois.extend(elc['subcortical_rois'])
@@ -817,7 +822,7 @@ if __name__ == '__main__':
     read_labels_from_annotation = True
     cpu_num = utils.cpu_count()
     if cpu_num <= 2:
-        n_jobs = 1
+        n_jobs = cpu_num
     else:
         n_jobs = cpu_num - 2
     print('n_jobs: {}'.format(n_jobs))
