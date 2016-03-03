@@ -791,6 +791,11 @@ def run_for_all_subjects(subjects, atlas, error_radius, elc_length, subjects_dir
     print(bad_subjects)
 
 
+# def add_colors_to_probs(elecs):
+#     for elc in elecs:
+#          elc['subcortical_probs']
+
+
 def build_remote_subject_dir(remote_subject_dir_template, subject):
     if isinstance(remote_subject_dir_template, dict):
         if 'func' in remote_subject_dir_template:
@@ -809,24 +814,24 @@ if __name__ == '__main__':
     blender_dir = utils.get_link_dir(LINKS_DIR, 'mmvt')
     os.environ['SUBJECTS_DIR'] = subjects_dir
     os.environ['FREESURFER_HOME'] = freesurfer_home
-    atlas = 'aparc.DKTatlas40' #'laus250'
+    atlas = 'laus250' # 'aparc.DKTatlas40'
     neccesary_files = {'mri': ['aseg.mgz'], 'surf': ['rh.pial', 'lh.pial', 'rh.sphere.reg', 'lh.sphere.reg', 'lh.white', 'rh.white']}
     remote_subject_dir_template = {'template':'/space/huygens/1/users/mia/subjects/{subject}_SurferOutput', 'func': lambda x: x.upper()}
     template_brain = 'fsaverage5c'
-    subjects = set(get_all_subjects(subjects_dir, 'mg', '_')) - set(['mg63', 'mg94']) # get_subjects()
+    subjects = ['mg96'] # set(get_all_subjects(subjects_dir, 'mg', '_')) - set(['mg63', 'mg94']) # get_subjects()
     error_radius = 3
     elc_length = 4
     strech_to_dist = True # If bipolar, strech to the neighbours
+    enlarge_if_no_hit = True
+    only_check_files = False
     overwrite = True
     overwrite_annotation = False
     overwrite_labels = False
     write_only_cortical = False
     write_only_subcortical = False
-    enlarge_if_no_hit = True
-    only_check_files = False
     overwrite_labels_pkl = True
     overwrite_csv = True
-    read_labels_from_annotation = True
+    read_labels_from_annotation = False
     cpu_num = utils.cpu_count()
     if cpu_num <= 2:
         n_jobs = cpu_num
