@@ -48,6 +48,9 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elcs_ori=None, appro
         aseg = nib.load(asegf)
         aseg_data = aseg.get_data()
         np.save(op.join(subjects_dir, subject, 'mri', 'aseg.npy'), aseg_data)
+        np.savez(op.join(subjects_dir, subject, 'mri', 'aseg.npz'), data = aseg_data.data ,indices=aseg_data.indices,
+             indptr =aseg_data.indptr, shape=aseg_data.shape )
+
         return
     except:
         print('!!!!! Error in loading aseg file !!!!! ')
