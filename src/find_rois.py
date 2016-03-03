@@ -47,15 +47,15 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elcs_ori=None, appro
     try:
         aseg = nib.load(asegf)
         aseg_data = aseg.get_data()
-        np.save(op.join(subjects_dir, subject, 'mri', 'aseg.npy'), aseg_data)
-        np.savez(op.join(subjects_dir, subject, 'mri', 'aseg.npz'), data = aseg_data.data ,indices=aseg_data.indices,
-             indptr =aseg_data.indptr, shape=aseg_data.shape )
-
-        return
+        # np.save(op.join(subjects_dir, subject, 'mri', 'aseg.npy'), aseg_data)
     except:
-        print('!!!!! Error in loading aseg file !!!!! ')
-        print('!!!!! No subcortical labels !!!!!')
-        aseg_data = None
+        backup_aseg_file = op.join(subjects_dir, subject, 'mri', 'aseg.npy')
+        if op.isfile(backup_aseg_file):
+            aseg_data = np.load(backup_aseg_file)
+        else:
+            print('!!!!! Error in loading aseg file !!!!! ')
+            print('!!!!! No subcortical labels !!!!!')
+            aseg_data = None
 
     lut = import_freesurfer_lut(subjects_dir, lut_fname)
 
@@ -386,6 +386,8 @@ def exclude_regions(regions, excludes):
 
 
 def region_is_excluded(region, compiled_excludes):
+    if isinstance(region, np.bytes_):
+        region = region.astype(str)
     return not compiled_excludes.search(region) is None
 
 
