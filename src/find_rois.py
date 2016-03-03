@@ -372,7 +372,7 @@ def import_freesurfer_lut(subjects_dir, fs_lut=''):
                 fs_lut = op.join(subjects_dir, 'FreeSurferColorLUT.txt')
 
     idx = np.genfromtxt(fs_lut, dtype=None, usecols=(0))
-    label = np.genfromtxt(fs_lut, dtype=None, usecols=(1))
+    label = utils.fix_bin_str_in_arr(np.genfromtxt(fs_lut, dtype=None, usecols=(1)))
     rgba = np.genfromtxt(fs_lut, dtype=None, usecols=(2, 3, 4, 5))
     lut = {'index':idx, 'label':label, 'RGBA':rgba}
     return lut
@@ -813,7 +813,7 @@ if __name__ == '__main__':
     neccesary_files = {'mri': ['aseg.mgz'], 'surf': ['rh.pial', 'lh.pial', 'rh.sphere.reg', 'lh.sphere.reg', 'lh.white', 'rh.white']}
     remote_subject_dir_template = {'template':'/space/huygens/1/users/mia/subjects/{subject}_SurferOutput', 'func': lambda x: x.upper()}
     template_brain = 'fsaverage5c'
-    subjects = ['mg96'] # set(get_all_subjects(subjects_dir, 'mg', '_')) - set(['mg63', 'mg94']) # get_subjects()
+    subjects = set(get_all_subjects(subjects_dir, 'mg', '_')) - set(['mg63', 'mg94']) # get_subjects()
     error_radius = 3
     elc_length = 4
     strech_to_dist = True # If bipolar, strech to the neighbours
@@ -829,7 +829,7 @@ if __name__ == '__main__':
     read_labels_from_annotation = True
     cpu_num = utils.cpu_count()
     if cpu_num <= 2:
-        n_jobs = 1
+        n_jobs = cpu_num
     else:
         n_jobs = cpu_num - 2
     print('n_jobs: {}'.format(n_jobs))
