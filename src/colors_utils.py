@@ -5,6 +5,8 @@ import matplotlib.cm as cmx
 
 
 def arr_to_colors(x, x_min=None, x_max=None, colors_map='jet', scalar_map=None):
+    if len(x) == 0:
+        return []
     if scalar_map is None:
         x_min, x_max = check_min_max(x, x_min, x_max)
         scalar_map = get_scalar_map(x_min, x_max, colors_map)

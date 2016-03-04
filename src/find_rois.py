@@ -17,6 +17,7 @@ import string
 import logging
 from src import utils
 from src import labels_utils as lu
+from src import colors_utils as cu
 
 LINKS_DIR = utils.get_links_dir()
 
@@ -791,9 +792,24 @@ def run_for_all_subjects(subjects, atlas, error_radius, elc_length, subjects_dir
     print(bad_subjects)
 
 
-# def add_colors_to_probs(elecs):
-#     for elc in elecs:
-#          elc['subcortical_probs']
+def add_colors_to_probs(subjects, atlas, output_files_post_fix):
+    for subject in subjects:
+        results_fname = op.join(get_electrodes_dir(), '{}_{}_electrodes_all_rois{}.pkl'.format(
+            subject, atlas, output_files_post_fix))
+        elecs = utils.load(results_fname)
+        for elc in elecs:
+            elc['subcortical_colors'] = cu.arr_to_colors(elc['subcortical_probs'], colors_map='YlOrRd')
+            elc['cortical_colors'] = cu.arr_to_colors(elc['cortical_probs'], colors_map='YlOrRd')
+        utils.save(elecs, results_fname)
+
+
+def remove_white_matter_and_normalize(elc):
+    no_white_inds = [ind for ind, label in enumerate(elc['subcortical_rois']) if label not in
+                     ['Left-Cerebral-White-Matter', 'Right-Cerebral-White-Matter']]
+    subcortical_probs_norm = elc['subcortical_probs'][no_white_inds]
+    subcortical_probs_norm *= 1/sum(subcortical_probs_norm)
+    subcortical_rois_norm = elc['subcortical_rois'][no_white_inds]
+    return subcortical_probs_norm, subcortical_rois_norm
 
 
 def build_remote_subject_dir(remote_subject_dir_template, subject):
@@ -849,3 +865,6 @@ if __name__ == '__main__':
             write_only_cortical, write_only_subcortical, strech_to_dist, enlarge_if_no_hit, only_check_files,
             overwrite_labels_pkl=overwrite_labels_pkl, overwrite_csv=overwrite_csv,
             read_labels_from_annotation=read_labels_from_annotation, n_jobs=n_jobs)
+    add_colors_to_probs(subjects, atlas, output_files_post_fix)
+
+    print('finish!')
