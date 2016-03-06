@@ -26,9 +26,9 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elcs_ori=None, appro
     nei_dimensions=None, atlas=None, elecs_dists=None, strech_to_dist=False, enlarge_if_no_hit=False,
     bipolar_electrodes=False, subjects_dir=None, subject=None, aseg_atlas=True, n_jobs=6):
 
-    if subjects_dir is None or subjects_dir=='':
+    if subjects_dir is None or subjects_dir == '':
         subjects_dir = os.environ['SUBJECTS_DIR']
-    if subject is None or subject=='':
+    if subject is None or subject == '':
         subject = os.environ['SUBJECT']
 
     # get the segmentation file
@@ -830,11 +830,11 @@ if __name__ == '__main__':
     blender_dir = utils.get_link_dir(LINKS_DIR, 'mmvt')
     os.environ['SUBJECTS_DIR'] = subjects_dir
     os.environ['FREESURFER_HOME'] = freesurfer_home
-    atlas = 'laus250' # 'aparc.DKTatlas40'
+    atlas = 'aparc.DKTatlas40' # 'laus250'
     neccesary_files = {'mri': ['aseg.mgz'], 'surf': ['rh.pial', 'lh.pial', 'rh.sphere.reg', 'lh.sphere.reg', 'lh.white', 'rh.white']}
     remote_subject_dir_template = {'template':'/space/huygens/1/users/mia/subjects/{subject}_SurferOutput', 'func': lambda x: x.upper()}
     template_brain = 'fsaverage5c'
-    subjects = ['mg96'] # set(get_all_subjects(subjects_dir, 'mg', '_')) - set(['mg63', 'mg94']) # get_subjects()
+    subjects = set(get_all_subjects(subjects_dir, 'mg', '_')) - set(['mg63', 'mg94']) # get_subjects()
     error_radius = 3
     elc_length = 4
     strech_to_dist = True # If bipolar, strech to the neighbours
@@ -847,7 +847,7 @@ if __name__ == '__main__':
     write_only_subcortical = False
     overwrite_labels_pkl = True
     overwrite_csv = True
-    read_labels_from_annotation = False
+    read_labels_from_annotation = True
     cpu_num = utils.cpu_count()
     if cpu_num <= 2:
         n_jobs = cpu_num
@@ -856,7 +856,7 @@ if __name__ == '__main__':
     print('n_jobs: {}'.format(n_jobs))
     logging.basicConfig(filename='errors.log',level=logging.ERROR)
 
-    for bipolar_electrodes in [False]:
+    for bipolar_electrodes in [False, True]:
         output_files_post_fix = '_cigar_r_{}_l_{}{}{}'.format(error_radius, elc_length,
             '_bipolar' if bipolar_electrodes else '', '_stretch' if strech_to_dist and bipolar_electrodes else '')
         run_for_all_subjects(subjects, atlas, error_radius, elc_length,
@@ -865,6 +865,6 @@ if __name__ == '__main__':
             write_only_cortical, write_only_subcortical, strech_to_dist, enlarge_if_no_hit, only_check_files,
             overwrite_labels_pkl=overwrite_labels_pkl, overwrite_csv=overwrite_csv,
             read_labels_from_annotation=read_labels_from_annotation, n_jobs=n_jobs)
-    add_colors_to_probs(subjects, atlas, output_files_post_fix)
+        add_colors_to_probs(subjects, atlas, output_files_post_fix)
 
     print('finish!')
