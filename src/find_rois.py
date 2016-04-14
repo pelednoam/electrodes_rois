@@ -81,13 +81,13 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elcs_ori=None, appro
     print('run with {} jobs'.format(n_jobs))
     results = utils.run_parallel(_find_elecs_roi_parallel, params, n_jobs)
     for results_chunk in results:
-        for elec_name, regions, regions_hits, subcortical_regions, subcortical_hits in results_chunk:
+        for elec_name, regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length in results_chunk:
             regions_probs = np.hstack((regions_hits, subcortical_hits)) / float(np.sum(regions_hits) + np.sum(subcortical_hits))
             if not np.allclose([np.sum(regions_probs)],[1.0]):
                 print('Warning!!! {}: sum(regions_probs) = {}!'.format(elec_name, sum(regions_probs)))
             elecs.append({'name': elec_name, 'cortical_rois': regions, 'subcortical_rois': subcortical_regions,
                 'cortical_probs': regions_probs[:len(regions)],
-                'subcortical_probs': regions_probs[len(regions):]})
+                'subcortical_probs': regions_probs[len(regions):], 'approx': approx, 'elc_length': elc_length})
     return elecs
 
 
@@ -97,11 +97,11 @@ def _find_elecs_roi_parallel(params):
         nei_dimensions, strech_to_dist, enlarge_if_no_hit, bipolar_electrodes, N = params
     for elc_num, elec_pos, elec_name, elc_ori, elc_dist in elecs_data_chunk:
         print('{}: {} / {}'.format(elec_name, elc_num, N))
-        regions, regions_hits, subcortical_regions, subcortical_hits = \
+        regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length = \
             identify_roi_from_atlas_per_electrode(labels, elec_pos, pia, len_lh_pia, atlas, lut,
                 aseg_data, approx, elc_length, nei_dimensions, elc_ori, elc_dist, strech_to_dist,
                 enlarge_if_no_hit, bipolar_electrodes, subjects_dir, subject, n_jobs=1)
-        results.append((elec_name, regions, regions_hits, subcortical_regions, subcortical_hits))
+        results.append((elec_name, regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length))
     return results
 
 
@@ -185,7 +185,7 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia, len_lh_pia, atlas, l
             elc_length += 1
             print('No hit! Recalculate with a bigger cigar')
 
-    return regions, regions_hits, subcortical_regions, subcortical_hits
+    return regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length
 
 
 def calc_hits(labels, hemi_str, surf_verts, elc_line, bins, approx, _region_is_excluded):
@@ -493,7 +493,8 @@ def write_results_to_csv(results, atlas, elecs_dir='', post_fix='',
     subcortical_rois = list(np.unique(subcortical_rois))
 
     for subject, elecs in results.items():
-        write_values(elecs, ['electrode'] + cortical_rois + subcortical_rois, [cortical_rois, subcortical_rois],
+        write_values(elecs, ['electrode'] + cortical_rois + subcortical_rois + ['approx', 'elc_length'],
+            [cortical_rois, subcortical_rois],
             ['cortical_rois','subcortical_rois'], ['cortical_probs', 'subcortical_probs'],
             op.join(elecs_dir, '{}_{}_electrodes_all_rois{}.csv'.format(subject, atlas, post_fix)))
 
@@ -521,6 +522,7 @@ def write_values(elecs, header, rois_arr, rois_names, probs_names, file_name):
                         values.append(str(elc[prob_field][index]))
                     else:
                         values.append(0.)
+            values.extend([elc['approx'], elc['elc_length']])
             writer.writerow(values)
 
 
@@ -589,7 +591,7 @@ def get_all_subjects(subjects_dir, prefix, exclude_substr):
 
 
 def check_for_annot_file(subject, subjects_dir, atlas, fsaverage='fsaverage5c', overwrite_labels=False,
-        overwrite_annot=False, read_labels_from_annotation=False, n_jobs=6):
+        overwrite_annot=False, read_labels_from_annotation=False, solve_labels_collisions=False, n_jobs=6):
     annot_file = op.join(subjects_dir, subject, 'label', '{}.{}.annot'.format('{hemi}', atlas))
     if read_labels_from_annotation and op.isfile(annot_file.format(hemi='rh')) and \
             op.isfile(annot_file.format(hemi='lh')):
@@ -598,8 +600,9 @@ def check_for_annot_file(subject, subjects_dir, atlas, fsaverage='fsaverage5c', 
     if overwrite_labels or overwrite_annot or not op.isfile(annot_file.format(hemi='rh')) or not \
             op.isfile(annot_file.format(hemi='lh')):
         morph_labels_from_fsaverage(subject, subjects_dir, atlas, n_jobs=n_jobs, fsaverage=fsaverage, overwrite=overwrite_labels)
-        backup_labels_fol = '{}_before_solve_collision'.format(atlas, fsaverage)
-        lu.solve_labels_collision(subject, subjects_dir, atlas, backup_labels_fol, n_jobs)
+        if solve_labels_collisions:
+            backup_labels_fol = '{}_before_solve_collision'.format(atlas, fsaverage)
+            lu.solve_labels_collision(subject, subjects_dir, atlas, backup_labels_fol, n_jobs)
         # lu.backup_annotation_files(subject, subjects_dir, atlas)
         # labels_to_annot(subject, subjects_dir, atlas, overwrite=overwrite_annot)
 
@@ -745,7 +748,7 @@ def run_for_all_subjects(subjects, atlas, error_radius, elc_length, subjects_dir
         bipolar_electrodes=False, neccesary_files=None, remote_subject_dir_template='', output_files_post_fix='',
         overwrite=False, overwrite_annotation=False, overwrite_labels=False, write_only_cortical=False, write_only_subcortical=False,
         strech_to_dist=False, enlarge_if_no_hit=False, only_check_files=False, overwrite_labels_pkl=False,
-        overwrite_csv=False, read_labels_from_annotation=False, n_jobs=6):
+        overwrite_csv=False, read_labels_from_annotation=False, solve_labels_collisions=False, n_jobs=6):
 
     ok_subjects, bad_subjects = [], []
     results = {}
@@ -762,7 +765,8 @@ def run_for_all_subjects(subjects, atlas, error_radius, elc_length, subjects_dir
                     check_for_necessary_files(subjects_dir, subject, neccesary_files)
                     check_for_annot_file(subject=subject, subjects_dir=subjects_dir, atlas=atlas, fsaverage=template_brain,
                         overwrite_labels=overwrite_labels, overwrite_annot=overwrite_annotation, n_jobs=n_jobs,
-                        read_labels_from_annotation=read_labels_from_annotation)
+                        read_labels_from_annotation=read_labels_from_annotation,
+                        solve_labels_collisions=solve_labels_collisions)
                     if only_check_files:
                         continue
                     elecs_names, elecs_pos, elecs_dists = get_electrodes(subject, bipolar_electrodes)
@@ -830,11 +834,11 @@ if __name__ == '__main__':
     blender_dir = utils.get_link_dir(LINKS_DIR, 'mmvt')
     os.environ['SUBJECTS_DIR'] = subjects_dir
     os.environ['FREESURFER_HOME'] = freesurfer_home
-    atlas = 'aparc.DKTatlas40' # 'laus250'
+    atlas = 'arc_april2016' # 'aparc.DKTatlas40' # 'laus250'
     neccesary_files = {'mri': ['aseg.mgz'], 'surf': ['rh.pial', 'lh.pial', 'rh.sphere.reg', 'lh.sphere.reg', 'lh.white', 'rh.white']}
     remote_subject_dir_template = {'template':'/space/huygens/1/users/mia/subjects/{subject}_SurferOutput', 'func': lambda x: x.upper()}
     template_brain = 'fsaverage5c'
-    subjects = set(get_all_subjects(subjects_dir, 'mg', '_')) - set(['mg63', 'mg94']) # get_subjects()
+    subjects = ['mg78'] # set(get_all_subjects(subjects_dir, 'mg', '_')) - set(['mg63', 'mg94']) # get_subjects()
     error_radius = 3
     elc_length = 4
     strech_to_dist = True # If bipolar, strech to the neighbours
@@ -847,7 +851,8 @@ if __name__ == '__main__':
     write_only_subcortical = False
     overwrite_labels_pkl = True
     overwrite_csv = True
-    read_labels_from_annotation = True
+    read_labels_from_annotation = False
+    solve_labels_collisions = False
     cpu_num = utils.cpu_count()
     if cpu_num <= 2:
         n_jobs = cpu_num
@@ -864,7 +869,8 @@ if __name__ == '__main__':
             remote_subject_dir_template, output_files_post_fix, overwrite, overwrite_annotation, overwrite_labels,
             write_only_cortical, write_only_subcortical, strech_to_dist, enlarge_if_no_hit, only_check_files,
             overwrite_labels_pkl=overwrite_labels_pkl, overwrite_csv=overwrite_csv,
-            read_labels_from_annotation=read_labels_from_annotation, n_jobs=n_jobs)
+            read_labels_from_annotation=read_labels_from_annotation, solve_labels_collisions=solve_labels_collisions,
+            n_jobs=n_jobs)
         add_colors_to_probs(subjects, atlas, output_files_post_fix)
 
     print('finish!')
