@@ -2,6 +2,7 @@ import os
 import shutil
 import numpy as np
 import multiprocessing
+import traceback
 try:
     import cPickle as pickle
 except:
@@ -28,7 +29,8 @@ def get_link_dir(links_dir, link_name, var_name='', default_val='', throw_except
 def get_links_dir():
     curr_dir = os.path.dirname(os.path.realpath(__file__))
     proj_dir = os.path.split(curr_dir)[0]
-    links_dir = os.path.join(proj_dir, 'links')
+    parent_dir = os.path.split(proj_dir)[0]
+    links_dir = os.path.join(parent_dir, 'links')
     return links_dir
 
 
@@ -91,15 +93,20 @@ def get_subfolders(fol):
 def csv_from_excel(xlsx_fname, csv_fname):
     import xlrd
     import csv
-    wb = xlrd.open_workbook(xlsx_fname)
-    sh = wb.sheet_by_name('Sheet1')
-    csv_file = open(csv_fname, 'wb')
-    wr = csv.writer(csv_file, quoting=csv.QUOTE_ALL)
+    try:
+        wb = xlrd.open_workbook(xlsx_fname)
+        sh = wb.sheet_by_name('Sheet1')
+        csv_file = open(csv_fname, 'wb')
+        wr = csv.writer(csv_file, quoting=csv.QUOTE_ALL)
 
-    for rownum in range(sh.nrows):
-        wr.writerow([str(val) for val in sh.row_values(rownum)])
+        for rownum in range(sh.nrows):
+            # wr.writerow([str(val).encode('utf_8') for val in sh.row_values(rownum)])
+            csv_file.write(b','.join([str(val).encode('utf_8') for val in sh.row_values(rownum)]) + b'\n')
 
-    csv_file.close()
+        csv_file.close()
+    except:
+        print('Error converting excel to csv!')
+        print(traceback.format_exc())
 
 
 def save(obj, fname):
@@ -177,3 +184,46 @@ def fix_bin_str_in_arr(arr):
     return [s.astype(str) if isinstance(s, np.bytes_) else s for s in arr]
 
 
+def bool_arr_type(var): return var
+def str_arr_type(var): return var
+
+
+def parse_parser(parser):
+    in_args = vars(parser.parse_args())
+    args = {}
+    for val in parser._option_string_actions.values():
+        if val.type is bool:
+            args[val.dest] = is_true(in_args[val.dest])
+        elif val.type is str_arr_type:
+            args[val.dest] = get_args_list(in_args, val.dest)
+        elif val.type is bool_arr_type:
+            args[val.dest] = get_args_list(in_args, val.dest, is_true)
+        elif val.dest in in_args:
+            args[val.dest] = in_args[val.dest]
+    return args
+
+
+def get_args_list(args, key, var_type=None):
+    if ',' in args[key]:
+        ret = args[key].split(',')
+    elif len(args[key]) == 0:
+        ret = []
+    else:
+        ret = [args[key]]
+    if var_type:
+        ret = list(map(var_type, ret))
+    return ret
+
+
+def is_true(val):
+    if isinstance(val, str):
+        if val.lower() == 'true':
+            return True
+        elif val.lower() == 'false':
+            return False
+        elif val.isnumeric():
+            return bool(int(val))
+        else:
+            raise Exception('Wrong value for boolean variable')
+    else:
+        return bool(val)

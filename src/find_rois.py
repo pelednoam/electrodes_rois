@@ -23,8 +23,8 @@ LINKS_DIR = utils.get_links_dir()
 
 
 def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elcs_ori=None, approx=4, elc_length=1,
-    nei_dimensions=None, atlas=None, elecs_dists=None, strech_to_dist=False, enlarge_if_no_hit=False,
-    bipolar_electrodes=False, subjects_dir=None, subject=None, aseg_atlas=True, n_jobs=6):
+    atlas=None, elecs_dists=None, strech_to_dist=False, enlarge_if_no_hit=False,
+    bipolar_electrodes=False, subjects_dir=None, subject=None, n_jobs=6, nei_dimensions=None, aseg_atlas=True):
 
     if subjects_dir is None or subjects_dir == '':
         subjects_dir = os.environ['SUBJECTS_DIR']
@@ -264,12 +264,17 @@ def calc_hits_in_neighbors_from_line(line, points, neighb, approx):
     if np.sum(hist > 0) == 0:
         return 0
     else:
-        hist_bin_centers_list = [bin_edges[d][:-1] + (bin_edges[d][1:] - bin_edges[d][:-1])/2.
-            for d in range(len(bin_edges))]
-        bin_centers = list(product(*hist_bin_centers_list))
-        dists = np.min(cdist(line, bin_centers), 0).reshape(hist.shape)
+        dists = calc_dists_between_line_and_bin_centers(line, bin_edges, hist)
         hits = len(np.where((hist > 0) & (dists<approx))[0])
         return hits
+
+
+def calc_dists_between_line_and_bin_centers(line, bin_edges, hist):
+    hist_bin_centers_list = [bin_edges[d][:-1] + (bin_edges[d][1:] - bin_edges[d][:-1]) / 2.
+                             for d in range(len(bin_edges))]
+    bin_centers = list(product(*hist_bin_centers_list))
+    dists = np.min(cdist(line, bin_centers), 0).reshape(hist.shape)
+    return dists
 
 
 def identify_roi_from_aparc(pos, elc_line, elc_length, lut, aseg_data, approx=4, nei_dimensions=None,
@@ -448,6 +453,9 @@ def get_electrodes(subject, bipolar=False, elecs_dir='', delimiter=','):
                 names.append(elec_name)
                 pos_biploar.append(pos[index] + (pos[index+1]-pos[index])/2)
                 dists.append(np.linalg.norm(pos[index+1]-pos[index]))
+        # check if there are grids electrodes
+        if np.max(dists) > 2 * np.median(dists):
+            raise Exception('It seems that there is a grid, remove it if you want to use bipolar electrodes.')
         pos = np.array(pos_biploar)
     else:
         names = data[:, 0]
@@ -465,6 +473,8 @@ def get_electrodes(subject, bipolar=False, elecs_dir='', delimiter=','):
 def fix_str_items_in_csv(csv):
     lines = []
     for line in csv:
+        if 'ref' in line[0].lower() or len(re.findall('\d', line[0])) == 0:
+            continue
         fix_line = list(map(lambda x: str(x).replace('"', ''), line))
         if not np.all([len(v) == 0 for v in fix_line[1:]]):
             lines.append(fix_line)
@@ -536,7 +546,7 @@ def write_values(elecs, header, rois_arr, rois_names, probs_names, file_name):
 def get_electrodes_orientation(elecs_names, elecs_pos, bipolar):
     elcs_oris = []
     for elc_name, elc_pos in zip(elecs_names, elecs_pos):
-        if bipolar_electrodes:
+        if bipolar:
             elc_group, elc_num1, elc_num2 = elec_group_number(elc_name, True)
             next_elc = '{}{}-{}{}'.format(elc_group, elc_num2 + 1, elc_group, elc_num1 + 1)
         else:
@@ -544,7 +554,7 @@ def get_electrodes_orientation(elecs_names, elecs_pos, bipolar):
             next_elc = '{}{}'.format(elc_group, elc_num+1)
         ori = 1
         if next_elc not in elecs_names:
-            if bipolar_electrodes:
+            if bipolar:
                 next_elc = '{}{}-{}{}'.format(elc_group, elc_num1, elc_group, elc_num1-1)
             else:
                 next_elc = '{}{}'.format(elc_group, elc_num-1)
@@ -565,9 +575,13 @@ def elec_group_number(elec_name, bipolar=False):
         _, num2 = elec_group_number(elec_name2, False)
         return group, num1, num2
     else:
-        ind = np.where([int(s.isdigit()) for s in elec_name])[-1][0]
-        num = int(elec_name[ind:])
-        group = elec_name[:ind]
+        # ind = np.where([int(s.isdigit()) for s in elec_name])[-1][0]
+        # num = int(elec_name[ind:])
+        elec_name = elec_name.strip()
+        num = int(re.sub('\D', ',', elec_name).split(',')[-1])
+        # group = elec_name[:ind]
+        group = elec_name[:elec_name.rfind(str(num))]
+        # print('name: {}, group: {}, num: {}'.format(elec_name, group, num))
         return group, num
 
 
@@ -700,20 +714,20 @@ def prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, 
         logging.error('{}: {}'.format(subject, 'Not all files exist in the local subject folder!!!'))
 
 
-def check_for_necessary_files(subjects_dir, subject, neccesary_files):
+def check_for_necessary_files(subjects_dir, subject, neccesary_files, remote_subject_dir_template):
     remote_subject_dir = build_remote_subject_dir(remote_subject_dir_template, subject)
     prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, subjects_dir,
         print_traceback=True)
     elecs_dir = get_electrodes_dir()
     elec_file = op.join(elecs_dir, '{}.csv'.format(subject))
-    if not op.isfile(elec_file):
+    if not op.isfile(elec_file) or op.getsize(elec_file) == 0:
         copy_electrodes_file(subjects_dir, subject, elec_file)
 
 
 def copy_electrodes_file(subjects_dir, subject, elec_file):
     subject_elec_fname = op.join(subjects_dir, subject, 'electrodes', '{}_RAS.csv'.format(subject))
-    if not op.isfile(subject_elec_fname):
-        rename_and_convert_electrodes_file(subject, subjects_dir)
+    if not op.isfile(subject_elec_fname) or op.getsize(subject_elec_fname) == 0:
+       rename_and_convert_electrodes_file(subject, subjects_dir)
     if op.isfile(subject_elec_fname):
         shutil.copyfile(subject_elec_fname, elec_file)
     else:
@@ -731,7 +745,8 @@ def rename_and_convert_electrodes_file(subject, subjects_dir):
         os.rename(subject_elec_fname_csv_upper, subject_elec_fname_csv)
     elif op.isfile(subject_elec_fname_xlsx_upper):
         os.rename(subject_elec_fname_xlsx_upper, subject_elec_fname_xlsx)
-    if op.isfile(subject_elec_fname_xlsx) and not op.isfile(subject_elec_fname_csv):
+    if op.isfile(subject_elec_fname_xlsx) and \
+                    (not op.isfile(subject_elec_fname_csv) or op.getsize(subject_elec_fname_csv) == 0):
         utils.csv_from_excel(subject_elec_fname_xlsx, subject_elec_fname_csv)
 
 
@@ -744,40 +759,34 @@ def rename_and_convert_electrodes_file(subject, subjects_dir):
 #     pia = np.vstack((pia_verts['lh'], pia_verts['rh']))
 
 
-def run_for_all_subjects(subjects, atlas, error_radius, elc_length, subjects_dir, template_brain='fsaverage',
-        bipolar_electrodes=False, neccesary_files=None, remote_subject_dir_template='', output_files_post_fix='',
-        overwrite=False, overwrite_annotation=False, overwrite_labels=False, write_only_cortical=False, write_only_subcortical=False,
-        strech_to_dist=False, enlarge_if_no_hit=False, only_check_files=False, overwrite_labels_pkl=False,
-        overwrite_csv=False, read_labels_from_annotation=False, solve_labels_collisions=False, n_jobs=6):
-
+def run_for_all_subjects(subjects, atlas, subjects_dir, bipolar_electrodes, neccesary_files,
+                         remote_subject_dir_template, output_files_post_fix, args, n_jobs):
     ok_subjects, bad_subjects = [], []
     results = {}
     for subject in subjects:
         output_file = op.join(get_electrodes_dir(), '{}_{}_electrodes_all_rois{}.csv'.format(subject, atlas, output_files_post_fix))
-        if not op.isfile(output_file) or overwrite_csv:
+        if not op.isfile(output_file) or args['overwrite_csv']:
             try:
                 results_fname = op.join(get_electrodes_dir(), '{}_{}_electrodes_all_rois{}.pkl'.format(
                     subject, atlas, output_files_post_fix))
-                if op.isfile(results_fname) and not overwrite:
+                if op.isfile(results_fname) and not args['overwrite']:
                     elecs = utils.load(results_fname)
                 else:
                     print('****************** {} ******************'.format(subject))
-                    check_for_necessary_files(subjects_dir, subject, neccesary_files)
-                    check_for_annot_file(subject=subject, subjects_dir=subjects_dir, atlas=atlas, fsaverage=template_brain,
-                        overwrite_labels=overwrite_labels, overwrite_annot=overwrite_annotation, n_jobs=n_jobs,
-                        read_labels_from_annotation=read_labels_from_annotation,
-                        solve_labels_collisions=solve_labels_collisions)
-                    if only_check_files:
+                    check_for_necessary_files(subjects_dir, subject, neccesary_files, remote_subject_dir_template)
+                    check_for_annot_file(subject, subjects_dir, atlas, args['template_brain'], args['overwrite_labels'],
+                        args['overwrite_annotation'], args['read_labels_from_annotation'], args['solve_labels_collisions'],
+                        n_jobs=n_jobs)
+                    if args['only_check_files']:
                         continue
                     elecs_names, elecs_pos, elecs_dists = get_electrodes(subject, bipolar_electrodes)
                     elcs_ori = get_electrodes_orientation(elecs_names, elecs_pos, bipolar_electrodes)
-                    labels = read_labels_vertices(subjects_dir, subject, atlas, read_labels_from_annotation,
-                        overwrite_labels_pkl, n_jobs)
-                    elecs = identify_roi_from_atlas(labels, elecs_names, elecs_pos, elcs_ori,
-                        atlas=atlas, approx=error_radius, elc_length=elc_length, elecs_dists=elecs_dists,
-                        strech_to_dist=strech_to_dist, enlarge_if_no_hit=enlarge_if_no_hit,
-                        bipolar_electrodes=bipolar_electrodes, subjects_dir=subjects_dir, subject=subject,
-                        aseg_atlas=False, n_jobs=n_jobs)
+                    labels = read_labels_vertices(subjects_dir, subject, atlas, args['read_labels_from_annotation'],
+                        args['overwrite_labels_pkl'], n_jobs)
+                    elecs = identify_roi_from_atlas(
+                        labels, elecs_names, elecs_pos, elcs_ori, args['error_radius'], args['elc_length'],
+                        args['atlas'], elecs_dists, args['strech_to_dist'], args['enlarge_if_no_hit'],
+                        bipolar_electrodes, subjects_dir, subject, n_jobs)
                     utils.save(elecs, results_fname)
                 results[subject] = elecs
                 ok_subjects.append(subject)
@@ -788,7 +797,7 @@ def run_for_all_subjects(subjects, atlas, error_radius, elc_length, subjects_dir
 
     # Write the results for all the subjects at once, to have a common labeling
     write_results_to_csv(results, atlas, post_fix=output_files_post_fix,
-        write_only_cortical=write_only_cortical, write_only_subcortical=write_only_subcortical)
+        write_only_cortical=args['write_only_cortical'], write_only_subcortical=args['write_only_subcortical'])
 
     print('ok subjects:')
     print(ok_subjects)
@@ -800,11 +809,12 @@ def add_colors_to_probs(subjects, atlas, output_files_post_fix):
     for subject in subjects:
         results_fname = op.join(get_electrodes_dir(), '{}_{}_electrodes_all_rois{}.pkl'.format(
             subject, atlas, output_files_post_fix))
-        elecs = utils.load(results_fname)
-        for elc in elecs:
-            elc['subcortical_colors'] = cu.arr_to_colors(elc['subcortical_probs'], colors_map='YlOrRd')
-            elc['cortical_colors'] = cu.arr_to_colors(elc['cortical_probs'], colors_map='YlOrRd')
-        utils.save(elecs, results_fname)
+        if op.isfile(results_fname):
+            elecs = utils.load(results_fname)
+            for elc in elecs:
+                elc['subcortical_colors'] = cu.arr_to_colors(elc['subcortical_probs'], colors_map='YlOrRd')
+                elc['cortical_colors'] = cu.arr_to_colors(elc['cortical_probs'], colors_map='YlOrRd')
+            utils.save(elecs, results_fname)
 
 
 def remove_white_matter_and_normalize(elc):
@@ -829,48 +839,61 @@ def build_remote_subject_dir(remote_subject_dir_template, subject):
 
 
 if __name__ == '__main__':
+    import argparse
+
     subjects_dir = utils.get_link_dir(LINKS_DIR, 'subjects', 'SUBJECTS_DIR')
     freesurfer_home = utils.get_link_dir(LINKS_DIR, 'freesurfer', 'FREESURFER_HOME')
     blender_dir = utils.get_link_dir(LINKS_DIR, 'mmvt')
     os.environ['SUBJECTS_DIR'] = subjects_dir
     os.environ['FREESURFER_HOME'] = freesurfer_home
-    atlas = 'arc_april2016' # 'aparc.DKTatlas40' # 'laus250'
+
+    parser = argparse.ArgumentParser(description='Description of your program')
+    parser.add_argument('-s', '--subject', help='subject name', required=True, type=utils.str_arr_type)
+    parser.add_argument('-a', '--atlas', help='atlas name', required=False, default='aparc.DKTatlas40')
+    parser.add_argument('-f', '--function', help='function name', required=False, default='all')
+    parser.add_argument('-b', '--bipolar', help='bipolar electrodes', required=False, default='1,0', type=utils.bool_arr_type)
+    parser.add_argument('--error_radius', help='error radius', required=False, default=3)
+    parser.add_argument('--elc_length', help='elc length', required=False, default=4)
+    parser.add_argument('--n_jobs', help='cpu num', required=False, default=-1)
+    parser.add_argument('--template_brain', help='template brain', required=False, default='fsaverage5c')
+    parser.add_argument('--strech_to_dist', help='strech_to_dist', required=False, default=1, type=bool)
+    parser.add_argument('--enlarge_if_no_hit', help='enlarge_if_no_hit', required=False, default=1, type=bool)
+    parser.add_argument('--only_check_files', help='only_check_files', required=False, default=0, type=bool)
+    parser.add_argument('--overwrite', help='overwrite', required=False, default=1, type=bool)
+    parser.add_argument('--overwrite_annotation', help='overwrite_annotation', required=False, default=0, type=bool)
+    parser.add_argument('--overwrite_labels', help='overwrite_labels', required=False, default=0, type=bool)
+    parser.add_argument('--write_only_cortical', help='write_only_cortical', required=False, default=0, type=bool)
+    parser.add_argument('--write_only_subcortical', help='write_only_subcortical', required=False, default=0, type=bool)
+    parser.add_argument('--overwrite_labels_pkl', help='overwrite_labels_pkl', required=False, default=1, type=bool)
+    parser.add_argument('--overwrite_csv', help='overwrite_csv', required=False, default=1, type=bool)
+    parser.add_argument('--read_labels_from_annotation', help='read_labels_from_annotation', required=False, default=1, type=bool)
+    parser.add_argument('--solve_labels_collisions', help='solve_labels_collisions', required=False, default=0, type=bool)
+    args = utils.parse_parser(parser)
+    print(args)
+    subjects, atlas = args['subject'], args['atlas'] # 'arc_april2016' # 'aparc.DKTatlas40' # 'laus250'
+    os.environ['SUBJECT'] = subjects[0]
+
     neccesary_files = {'mri': ['aseg.mgz'], 'surf': ['rh.pial', 'lh.pial', 'rh.sphere.reg', 'lh.sphere.reg', 'lh.white', 'rh.white']}
     remote_subject_dir_template = {'template':'/space/huygens/1/users/mia/subjects/{subject}_SurferOutput', 'func': lambda x: x.upper()}
-    template_brain = 'fsaverage5c'
-    subjects = ['mg82'] # set(get_all_subjects(subjects_dir, 'mg', '_')) - set(['mg63', 'mg94']) # get_subjects()
-    error_radius = 3
-    elc_length = 4
-    strech_to_dist = True # If bipolar, strech to the neighbours
-    enlarge_if_no_hit = True
-    only_check_files = False
-    overwrite = True
-    overwrite_annotation = False
-    overwrite_labels = False
-    write_only_cortical = False
-    write_only_subcortical = False
-    overwrite_labels_pkl = True
-    overwrite_csv = True
-    read_labels_from_annotation = False
-    solve_labels_collisions = False
+    # if subject == 'all':
+    #     subjects = set(get_all_subjects(subjects_dir, 'mg', '_')) - set(['mg63', 'mg94']) # get_subjects()
+    # else:
+    #     subjects = [subject]
+
     cpu_num = utils.cpu_count()
-    if cpu_num <= 2:
+    n_jobs = int(args['n_jobs'])
+    if n_jobs > cpu_num:
         n_jobs = cpu_num
-    else:
-        n_jobs = cpu_num - 2
+    elif n_jobs < 0:
+        n_jobs = cpu_num + n_jobs
+
     print('n_jobs: {}'.format(n_jobs))
     logging.basicConfig(filename='errors.log',level=logging.ERROR)
-
-    for bipolar_electrodes in [False, True]:
-        output_files_post_fix = '_cigar_r_{}_l_{}{}{}'.format(error_radius, elc_length,
-            '_bipolar' if bipolar_electrodes else '', '_stretch' if strech_to_dist and bipolar_electrodes else '')
-        run_for_all_subjects(subjects, atlas, error_radius, elc_length,
-            subjects_dir, template_brain, bipolar_electrodes, neccesary_files,
-            remote_subject_dir_template, output_files_post_fix, overwrite, overwrite_annotation, overwrite_labels,
-            write_only_cortical, write_only_subcortical, strech_to_dist, enlarge_if_no_hit, only_check_files,
-            overwrite_labels_pkl=overwrite_labels_pkl, overwrite_csv=overwrite_csv,
-            read_labels_from_annotation=read_labels_from_annotation, solve_labels_collisions=solve_labels_collisions,
-            n_jobs=n_jobs)
+    for bipolar in args['bipolar']:
+        output_files_post_fix = '_cigar_r_{}_l_{}{}{}'.format(args['error_radius'], args['elc_length'],
+            '_bipolar' if bipolar else '', '_stretch' if args['strech_to_dist'] and bipolar else '')
+        run_for_all_subjects(subjects, atlas, subjects_dir, bipolar, neccesary_files, remote_subject_dir_template,
+                         output_files_post_fix, args, n_jobs)
         add_colors_to_probs(subjects, atlas, output_files_post_fix)
 
     print('finish!')
