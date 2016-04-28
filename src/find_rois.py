@@ -4,7 +4,7 @@ import os.path as op
 from functools import partial
 import re
 import nibabel as nib
-from collections import Counter
+from collections import Counter, defaultdict
 from scipy.spatial.distance import cdist
 import mne
 from mne.surface import read_surface
@@ -13,18 +13,18 @@ import csv
 import glob
 import traceback
 import shutil
-import string
 import logging
 from src import utils
 from src import labels_utils as lu
 from src import colors_utils as cu
 
 LINKS_DIR = utils.get_links_dir()
+DEPTH, GRID = range(2)
 
-
-def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elcs_ori=None, approx=4, elc_length=1,
-    atlas=None, elecs_dists=None, strech_to_dist=False, enlarge_if_no_hit=False,
-    bipolar_electrodes=False, subjects_dir=None, subject=None, n_jobs=6, nei_dimensions=None, aseg_atlas=True):
+def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elecs_ori=None, approx=4, elc_length=1,
+                            elecs_dists=None, elecs_types=None, strech_to_dist=False, enlarge_if_no_hit=False,
+                            bipolar_electrodes=False, subjects_dir=None, subject=None, n_jobs=6,
+                            nei_dimensions=None, aseg_atlas=True):
 
     if subjects_dir is None or subjects_dir == '':
         subjects_dir = os.environ['SUBJECTS_DIR']
@@ -42,7 +42,7 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elcs_ori=None, appro
             asegf = aseg_atlas_fname
             lut_fname = lut_atlast_fname
         else:
-            print('{} doesnot exist!'.format(aseg_atlas_fname))
+            logging.warning("{} doesnot exist!".format(aseg_atlas_fname))
     if not op.isfile(asegf):
         asegf = op.join(subjects_dir, subject, 'mri', 'aparc+aseg.mgz')
     try:
@@ -54,8 +54,8 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elcs_ori=None, appro
         if op.isfile(backup_aseg_file):
             aseg_data = np.load(backup_aseg_file)
         else:
-            print('!!!!! Error in loading aseg file !!!!! ')
-            print('!!!!! No subcortical labels !!!!!')
+            logging.error('!!!!! Error in loading aseg file !!!!! ')
+            logging.error('!!!!! No subcortical labels !!!!!')
             aseg_data = None
 
     lut = import_freesurfer_lut(subjects_dir, lut_fname)
@@ -70,13 +70,17 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elcs_ori=None, appro
     len_lh_pia = len(pia_verts['lh'])
 
     elecs = []
-    if elcs_ori is None:
-        elcs_ori = [None] * len(elecs_pos)
-    elecs_data = [(elc_num, elec_pos, elec_name, elc_ori, elc_dist) for \
-        elc_num, (elec_pos, elec_name, elc_ori, elc_dist) in enumerate(zip(elecs_pos, elecs_names, elcs_ori, elecs_dists))]
+    if elecs_ori is None:
+        elecs_ori = [None] * len(elecs_pos)
+    if elecs_types is None:
+        elecs_types = [DEPTH] * len (elecs_pos)
+    elecs_data = list(enumerate(zip(elecs_pos, elecs_names, elecs_ori, elecs_dists, elecs_types)))
+        # [(elc_num, elec_pos, elec_name, elc_ori, elc_dist, elc_type) for
+        #           elc_num, (elec_pos, elec_name, elc_ori, elc_dist, elc_type) in
+        #           enumerate(zip(elecs_pos, elecs_names, elcs_ori, elecs_dists, elecs_types))]
     N = len(elecs_data)
     elecs_data_chunks = utils.chunks(elecs_data, len(elecs_data) / n_jobs)
-    params = [(elecs_data_chunk, subject, subjects_dir, labels, atlas, aseg_data, lut, pia, len_lh_pia, approx, elc_length, nei_dimensions,
+    params = [(elecs_data_chunk, subject, subjects_dir, labels, aseg_data, lut, pia, len_lh_pia, approx, elc_length, nei_dimensions,
                strech_to_dist, enlarge_if_no_hit, bipolar_electrodes, N) for elecs_data_chunk in elecs_data_chunks]
     print('run with {} jobs'.format(n_jobs))
     results = utils.run_parallel(_find_elecs_roi_parallel, params, n_jobs)
@@ -84,7 +88,7 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elcs_ori=None, appro
         for elec_name, regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length in results_chunk:
             regions_probs = np.hstack((regions_hits, subcortical_hits)) / float(np.sum(regions_hits) + np.sum(subcortical_hits))
             if not np.allclose([np.sum(regions_probs)],[1.0]):
-                print('Warning!!! {}: sum(regions_probs) = {}!'.format(elec_name, sum(regions_probs)))
+                logging.warning('Warning!!! {}: sum(regions_probs) = {}!'.format(elec_name, sum(regions_probs)))
             elecs.append({'name': elec_name, 'cortical_rois': regions, 'subcortical_rois': subcortical_regions,
                 'cortical_probs': regions_probs[:len(regions)],
                 'subcortical_probs': regions_probs[len(regions):], 'approx': approx, 'elc_length': elc_length})
@@ -93,20 +97,20 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elcs_ori=None, appro
 
 def _find_elecs_roi_parallel(params):
     results = []
-    elecs_data_chunk, subject, subjects_dir, labels, atlas, aseg_data, lut, pia, len_lh_pia, approx, elc_length,\
+    elecs_data_chunk, subject, subjects_dir, labels, aseg_data, lut, pia, len_lh_pia, approx, elc_length,\
         nei_dimensions, strech_to_dist, enlarge_if_no_hit, bipolar_electrodes, N = params
-    for elc_num, elec_pos, elec_name, elc_ori, elc_dist in elecs_data_chunk:
+    for elc_num, (elec_pos, elec_name, elc_ori, elc_dist, elc_type) in elecs_data_chunk:
         print('{}: {} / {}'.format(elec_name, elc_num, N))
         regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length = \
-            identify_roi_from_atlas_per_electrode(labels, elec_pos, pia, len_lh_pia, atlas, lut,
-                aseg_data, approx, elc_length, nei_dimensions, elc_ori, elc_dist, strech_to_dist,
+            identify_roi_from_atlas_per_electrode(labels, elec_pos, pia, len_lh_pia, lut,
+                aseg_data, elec_name, approx, elc_length, nei_dimensions, elc_ori, elc_dist, elc_type, strech_to_dist,
                 enlarge_if_no_hit, bipolar_electrodes, subjects_dir, subject, n_jobs=1)
         results.append((elec_name, regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length))
     return results
 
 
-def identify_roi_from_atlas_per_electrode(labels, pos, pia, len_lh_pia, atlas, lut, aseg_data,
-      approx=4, elc_length=1, nei_dimensions=None, elc_ori=None, elc_dist=0, strech_to_dist=False,
+def identify_roi_from_atlas_per_electrode(labels, pos, pia, len_lh_pia, lut, aseg_data, elc_name,
+      approx=4, elc_length=1, nei_dimensions=None, elc_ori=None, elc_dist=0, elc_type=DEPTH, strech_to_dist=False,
       enlarge_if_no_hit=False, bipolar_electrodes=False, subjects_dir=None, subject=None, n_jobs=1):
     '''
     Find the surface labels contacted by an electrode at this position
@@ -138,6 +142,11 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia, len_lh_pia, atlas, l
     surf_fname = op.join(subjects_dir, subject, 'surf', hemi_str + '.pial')
     verts, _ = read_surface(surf_fname)
     closest_vert_pos = verts[closest_vert]
+
+    if elc_type == GRID:
+        elc_dist = 0
+        elc_length = 0
+        elc_ori = None
 
     we_have_a_hit = False
     if strech_to_dist and bipolar_electrodes and elc_length < elc_dist:
@@ -182,7 +191,10 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia, len_lh_pia, atlas, l
         we_have_a_hit = not electrode_is_only_in_white_matter(regions, subcortical_regions) or not enlarge_if_no_hit
         if not we_have_a_hit:
             approx += .5
-            elc_length += 1
+            if elc_type == DEPTH:
+                elc_length += 1
+            elif elc_type == GRID:
+                logging.warning('Grid electrode ({}) without a cortical hit?!?!'.format(elc_name))
             print('No hit! Recalculate with a bigger cigar')
 
     return regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length
@@ -422,6 +434,28 @@ def calc_neighbors(pos, approx=None, dimensions=None, calc_bins=False):
     return pos + neighb
 
 
+def grid_or_depth(data):
+    pos = data[:, 1:].astype(float)
+    dists = defaultdict(list)
+    group_type = {}
+    electrodes_group_type = [None] * pos.shape[0]
+    for index in range(data.shape[0] - 1):
+        elc_group1, elc_num1 = elec_group_number(data[index, 0])
+        elc_group2, elc_num12 = elec_group_number(data[index + 1, 0])
+        if elc_group1 == elc_group2:
+            dists[elc_group1].append(np.linalg.norm(pos[index + 1] - pos[index]))
+    for group, group_dists in dists.items():
+        #todo: not sure this is the best way to check it. Strip with 1xN will be mistaken as a depth
+        if np.max(group_dists) > 2 * np.median(group_dists):
+            group_type[group] = GRID
+        else:
+            group_type[group] = DEPTH
+    for index in range(data.shape[0]):
+        elc_group, _ = elec_group_number(data[index, 0])
+        electrodes_group_type[index] = group_type[elc_group]
+    return np.array(electrodes_group_type)
+
+
 def get_electrodes(subject, bipolar=False, elecs_dir='', delimiter=','):
     if elecs_dir=='':
         elecs_dir = get_electrodes_dir()
@@ -429,45 +463,51 @@ def get_electrodes(subject, bipolar=False, elecs_dir='', delimiter=','):
     data = np.genfromtxt(elec_file, dtype=str, delimiter=delimiter)
     data = fix_str_items_in_csv(data)
     # Check if the electrodes coordinates has a header
-    # if isinstance(data[0, 1:], np.ndarray) and data[0, 1:].dtype.kind == 'S':
-    #     data = np.delete(data, (0), axis=0)
-    #     print('First line in the electrodes RAS coordinates is a header')
-    # else:
     try:
         header = data[0, 1:].astype(float)
     except:
         data = np.delete(data, (0), axis=0)
         print('First line in the electrodes RAS coordinates is a header')
 
-    # if not isinstance(data[:, 1:], np.ndarray):
-    pos = data[:, 1:].astype(float)
-    dists = []
+    electrodes_types = grid_or_depth(data)
+    # print([(n, elec_group_number(n), t) for n, t in zip(data[:, 0], electrodes_group_type)])
     if bipolar:
-        pos_biploar, names = [], []
-        for index in range(data.shape[0]-1):
-            elc_group1, elc_num1 = elec_group_number(data[index, 0])
-            elc_group2, elc_num12 = elec_group_number(data[index+1, 0])
+        depth_data = data[electrodes_types == DEPTH, :]
+        pos = depth_data[:, 1:4].astype(float)
+        pos_depth, names_depth, dists_depth = [], [], []
+        for index in range(depth_data.shape[0]-1):
+            elc_group1, elc_num1 = elec_group_number(depth_data[index, 0])
+            elc_group2, elc_num12 = elec_group_number(depth_data[index+1, 0])
             if elc_group1 == elc_group2:
-            # if data[index+1, 0][:3] == data[index, 0][:3]:
-                elec_name = '{}-{}'.format(data[index+1, 0],data[index, 0])
-                names.append(elec_name)
-                pos_biploar.append(pos[index] + (pos[index+1]-pos[index])/2)
-                dists.append(np.linalg.norm(pos[index+1]-pos[index]))
-        # check if there are grids electrodes
-        if np.max(dists) > 2 * np.median(dists):
-            raise Exception('It seems that there is a grid, remove it if you want to use bipolar electrodes.')
-        pos = np.array(pos_biploar)
+                elec_name = '{}-{}'.format(depth_data[index+1, 0],depth_data[index, 0])
+                names_depth.append(elec_name)
+                pos_depth.append(pos[index] + (pos[index+1]-pos[index])/2)
+                dists_depth.append(np.linalg.norm(pos[index+1]-pos[index]))
+        # There is no point in calculating bipolar for grid electrodes
+        grid_data = data[electrodes_types == GRID, :]
+        names_grid, _, pos_grid = get_names_dists_non_bipolar_electrodes(grid_data)
+        names = np.concatenate((names_depth, names_grid))
+        # Put zeros as dists for the grid electrodes
+        dists = np.concatenate((np.array(dists_depth), np.zeros((len(names_grid)))))
+        pos = np.vstack((np.array(pos_depth), pos_grid))
+        electrodes_types = [DEPTH] * len(names_depth) + [GRID] * len(names_grid)
     else:
-        names = data[:, 0]
-        dists = [np.linalg.norm(p2-p1) for p1,p2 in zip(pos[:-1], pos[1:])]
-        # Add the distance for the last electrode
-        dists.append(0.)
-    names = np.array([name.strip() for name in names])
-    if not len(names) == len(pos) == len(dists):
+        names, dists, pos = get_names_dists_non_bipolar_electrodes(data)
+    # names = np.array([name.strip() for name in names])
+    if not len(names) == len(pos) == len(dists) == len(electrodes_types):
         logging.error('get_electrodes ({}): not len(names)==len(pos)==len(dists)!'.format(subject))
         raise Exception('get_electrodes: not len(names)==len(pos)==len(dists)!')
 
-    return names, pos, dists
+    return names, pos, dists, electrodes_types
+
+
+def get_names_dists_non_bipolar_electrodes(data):
+    names = data[:, 0]
+    pos = data[:, 1:4].astype(float)
+    dists = [np.linalg.norm(p2 - p1) for p1, p2 in zip(pos[:-1], pos[1:])]
+    # Add the distance for the last electrode
+    dists.append(0.)
+    return names, dists, pos
 
 
 def fix_str_items_in_csv(csv):
@@ -477,6 +517,7 @@ def fix_str_items_in_csv(csv):
             continue
         fix_line = list(map(lambda x: str(x).replace('"', ''), line))
         if not np.all([len(v) == 0 for v in fix_line[1:]]):
+            fix_line[0] = fix_line[0].strip()
             lines.append(fix_line)
     return np.array(lines)
 
@@ -543,27 +584,27 @@ def write_values(elecs, header, rois_arr, rois_names, probs_names, file_name):
 #     np.genfromtxt(csv_fname)
 
 
-def get_electrodes_orientation(elecs_names, elecs_pos, bipolar):
-    elcs_oris = []
-    for elc_name, elc_pos in zip(elecs_names, elecs_pos):
-        if bipolar:
-            elc_group, elc_num1, elc_num2 = elec_group_number(elc_name, True)
-            next_elc = '{}{}-{}{}'.format(elc_group, elc_num2 + 1, elc_group, elc_num1 + 1)
-        else:
-            elc_group, elc_num = elec_group_number(elc_name)
-            next_elc = '{}{}'.format(elc_group, elc_num+1)
-        ori = 1
-        if next_elc not in elecs_names:
+def get_electrodes_orientation(elecs_names, elecs_pos, bipolar, elecs_types):
+    elcs_oris = np.zeros((len(elecs_names), 3))
+    for index, (elc_name, elc_pos, elc_type) in enumerate(zip(elecs_names, elecs_pos, elecs_types)):
+        if elecs_types[index] == DEPTH:
             if bipolar:
-                next_elc = '{}{}-{}{}'.format(elc_group, elc_num1, elc_group, elc_num1-1)
+                elc_group, elc_num1, elc_num2 = elec_group_number(elc_name, True)
+                next_elc = '{}{}-{}{}'.format(elc_group, elc_num2 + 1, elc_group, elc_num1 + 1)
             else:
-                next_elc = '{}{}'.format(elc_group, elc_num-1)
-            ori = -1
-        next_elc_index = np.where(elecs_names==next_elc)[0][0]
-        next_elc_pos = elecs_pos[next_elc_index]
-        dist = np.linalg.norm(next_elc_pos-elc_pos)
-        elc_ori = ori * (next_elc_pos-elc_pos) / dist # norm(elc_ori)=1mm
-        elcs_oris.append(elc_ori)
+                elc_group, elc_num = elec_group_number(elc_name)
+                next_elc = '{}{}'.format(elc_group, elc_num+1)
+            ori = 1
+            if next_elc not in elecs_names:
+                if bipolar:
+                    next_elc = '{}{}-{}{}'.format(elc_group, elc_num1, elc_group, elc_num1-1)
+                else:
+                    next_elc = '{}{}'.format(elc_group, elc_num-1)
+                ori = -1
+            next_elc_index = np.where(elecs_names==next_elc)[0][0]
+            next_elc_pos = elecs_pos[next_elc_index]
+            dist = np.linalg.norm(next_elc_pos-elc_pos)
+            elcs_oris[index] = ori * (next_elc_pos-elc_pos) / dist # norm(elc_ori)=1mm
         # print(elc_name, elc_pos, next_elc, next_elc_pos, elc_line(1))
     return elcs_oris
 
@@ -707,7 +748,7 @@ def prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, 
     for fol, files in neccesary_files.items():
         for file_name in files:
             if not op.isfile(op.join(local_subject_dir, fol, file_name)):
-                print("The file {} doesn't exist in the local subjects folder!!!".format(file_name))
+                logging.error("The file {} doesn't exist in the local subjects folder!!!".format(file_name))
                 all_files_exists = False
     if not all_files_exists:
         raise Exception('Not all files exist in the local subject folder!!!')
@@ -773,19 +814,20 @@ def run_for_all_subjects(subjects, atlas, subjects_dir, bipolar_electrodes, necc
                     elecs = utils.load(results_fname)
                 else:
                     print('****************** {} ******************'.format(subject))
+                    logging.info('****************** {} ******************'.format(subject))
                     check_for_necessary_files(subjects_dir, subject, neccesary_files, remote_subject_dir_template)
                     check_for_annot_file(subject, subjects_dir, atlas, args['template_brain'], args['overwrite_labels'],
                         args['overwrite_annotation'], args['read_labels_from_annotation'], args['solve_labels_collisions'],
                         n_jobs=n_jobs)
                     if args['only_check_files']:
                         continue
-                    elecs_names, elecs_pos, elecs_dists = get_electrodes(subject, bipolar_electrodes)
-                    elcs_ori = get_electrodes_orientation(elecs_names, elecs_pos, bipolar_electrodes)
+                    elecs_names, elecs_pos, elecs_dists, elecs_types = get_electrodes(subject, bipolar_electrodes)
+                    elcs_ori = get_electrodes_orientation(elecs_names, elecs_pos, bipolar_electrodes, elecs_types)
                     labels = read_labels_vertices(subjects_dir, subject, atlas, args['read_labels_from_annotation'],
                         args['overwrite_labels_pkl'], n_jobs)
                     elecs = identify_roi_from_atlas(
                         labels, elecs_names, elecs_pos, elcs_ori, args['error_radius'], args['elc_length'],
-                        args['atlas'], elecs_dists, args['strech_to_dist'], args['enlarge_if_no_hit'],
+                        elecs_dists, elecs_types, args['strech_to_dist'], args['enlarge_if_no_hit'],
                         bipolar_electrodes, subjects_dir, subject, n_jobs)
                     utils.save(elecs, results_fname)
                 results[subject] = elecs
@@ -799,11 +841,14 @@ def run_for_all_subjects(subjects, atlas, subjects_dir, bipolar_electrodes, necc
     write_results_to_csv(results, atlas, post_fix=output_files_post_fix,
         write_only_cortical=args['write_only_cortical'], write_only_subcortical=args['write_only_subcortical'])
 
-    print('ok subjects:')
-    print(ok_subjects)
-    print('bad_subjects:')
-    print(bad_subjects)
-
+    if ok_subjects:
+        print('ok subjects:')
+        print(ok_subjects)
+    if bad_subjects:
+        print('bad_subjects:')
+        print(bad_subjects)
+        logging.error('bad_subjects:')
+        logging.error(bad_subjects)
 
 def add_colors_to_probs(subjects, atlas, output_files_post_fix):
     for subject in subjects:
@@ -888,7 +933,7 @@ if __name__ == '__main__':
         n_jobs = cpu_num + n_jobs
 
     print('n_jobs: {}'.format(n_jobs))
-    logging.basicConfig(filename='errors.log',level=logging.ERROR)
+    logging.basicConfig(filename='log.log',level=logging.DEBUG)
     for bipolar in args['bipolar']:
         output_files_post_fix = '_cigar_r_{}_l_{}{}{}'.format(args['error_radius'], args['elc_length'],
             '_bipolar' if bipolar else '', '_stretch' if args['strech_to_dist'] and bipolar else '')
