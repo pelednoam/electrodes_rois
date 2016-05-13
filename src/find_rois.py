@@ -474,14 +474,23 @@ def get_electrodes_from_file(pos_fname, bipolar):
             names[ind + 1]
 
 
+def raise_err(err_msg):
+    logging.error(err_msg)
+    raise Exception(err_msg)
+
+
 def get_electrodes(subject, bipolar, elecs_dir='', delimiter=',', pos_fname=''):
     if pos_fname != '':
         f = np.load(pos_fname)
         if 'pos' not in f or 'names' not in f or 'dists' not in f:
-            raise Exception('electrodes posistions file was given, but without the fields' +
-                            '"pos", "names", "dists" or "electrodes_types!')
+            raise_err('electrodes positions file was given, but without the fields' +
+                '"pos", "names", "dists" or "electrodes_types!')
+        if f['bipolar'] != bipolar:
+            raise_err('electrodes positions file was given, but its bipolarity is {} '.format(f['bipolar']) + \
+                'while you set the bipolarity to {}!'.format(bipolar))
         return f['names'], f['pos'], f['dists'], f['electrodes_types']
 
+    check_for_electrodes_coordinates_file(subject)
     if elecs_dir=='':
         elecs_dir = get_electrodes_dir()
     elec_file = op.join(elecs_dir, '{}.csv'.format(subject))
@@ -609,7 +618,18 @@ def write_values(elecs, header, rois_arr, rois_names, probs_names, file_name):
 #     np.genfromtxt(csv_fname)
 
 
-def get_electrodes_orientation(elecs_names, elecs_pos, bipolar, elecs_types):
+def get_electrodes_orientation(elecs_names, elecs_pos, bipolar, elecs_types, elecs_oris_fname=''):
+    if elecs_oris_fname != '':
+        f = np.load(elecs_oris_fname)
+        if 'electrodes_oris' not in f:
+            logging.error('elecs oris fname was given, but without the "electrodes_oris" field!')
+            raise Exception('elecs oris fname was given, but without the "electrodes_oris" field!')
+        elcs_oris = f['electrodes_oris']
+        if elcs_oris.shape[0] != len(elecs_names):
+            logging.error('elecs oris fname was given, but with a wrong number of orientations!')
+            raise Exception('elecs oris fname was given, but with a wrong number of orientations!')
+        return elcs_oris
+
     elcs_oris = np.zeros((len(elecs_names), 3))
     for index, (elc_name, elc_pos, elc_type) in enumerate(zip(elecs_names, elecs_pos, elecs_types)):
         if elecs_types[index] == DEPTH:
@@ -629,7 +649,7 @@ def get_electrodes_orientation(elecs_names, elecs_pos, bipolar, elecs_types):
             next_elc_index = np.where(elecs_names==next_elc)[0][0]
             next_elc_pos = elecs_pos[next_elc_index]
             dist = np.linalg.norm(next_elc_pos-elc_pos)
-            elcs_oris[index] = ori * (next_elc_pos-elc_pos) / dist # norm(elc_ori)=1mm
+            elcs_oris[index] = ori * (next_elc_pos - elc_pos) / dist # norm(elc_ori)=1mm
         # print(elc_name, elc_pos, next_elc, next_elc_pos, elc_line(1))
     return elcs_oris
 
@@ -794,6 +814,9 @@ def check_for_necessary_files(subjects_dir, subject, neccesary_files, remote_sub
     remote_subject_dir = build_remote_subject_dir(remote_subject_dir_template, subject)
     prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, subjects_dir,
         print_traceback=True)
+
+
+def check_for_electrodes_coordinates_file(subject):
     elecs_dir = get_electrodes_dir()
     elec_file = op.join(elecs_dir, '{}.csv'.format(subject))
     if not op.isfile(elec_file) or op.getsize(elec_file) == 0:
@@ -843,7 +866,7 @@ def run_for_all_subjects(subjects, atlas, subjects_dir, bipolar_electrodes, necc
         output_file = op.join(get_electrodes_dir(), '{}_{}_electrodes_all_rois{}.csv'.format(subject, atlas, output_files_post_fix))
         if not op.isfile(output_file) or args['overwrite_csv']:
             try:
-                results_fname = op.join(get_electrodes_dir(), '{}_{}_electrodes_all_rois{}.pkl'.format(
+                results_fname = op.join(get_electrodes_dir(), '{}_{}_electrodes_{}.pkl'.format(
                     subject, atlas, output_files_post_fix))
                 if op.isfile(results_fname) and not args['overwrite']:
                     elecs = utils.load(results_fname)
@@ -857,8 +880,9 @@ def run_for_all_subjects(subjects, atlas, subjects_dir, bipolar_electrodes, necc
                     if args['only_check_files']:
                         continue
                     elecs_names, elecs_pos, elecs_dists, elecs_types = get_electrodes(
-                        subject, bipolar_electrodes, args.pos_fname)
-                    elcs_ori = get_electrodes_orientation(elecs_names, elecs_pos, bipolar_electrodes, elecs_types)
+                        subject, bipolar_electrodes, pos_fname=args['pos_fname'])
+                    elcs_ori = get_electrodes_orientation(
+                        elecs_names, elecs_pos, bipolar_electrodes, elecs_types, elecs_oris_fname=args['pos_fname'])
                     labels = read_labels_vertices(subjects_dir, subject, atlas, args['read_labels_from_annotation'],
                         args['overwrite_labels_pkl'], n_jobs)
                     elecs = identify_roi_from_atlas(
@@ -885,6 +909,7 @@ def run_for_all_subjects(subjects, atlas, subjects_dir, bipolar_electrodes, necc
         print(bad_subjects)
         logging.error('bad_subjects:')
         logging.error(bad_subjects)
+
 
 def add_colors_to_probs(subjects, atlas, output_files_post_fix):
     for subject in subjects:
@@ -921,6 +946,7 @@ def build_remote_subject_dir(remote_subject_dir_template, subject):
 
 if __name__ == '__main__':
     import argparse
+    from src import args_utils as au
 
     subjects_dir = utils.get_link_dir(LINKS_DIR, 'subjects', 'SUBJECTS_DIR')
     freesurfer_home = utils.get_link_dir(LINKS_DIR, 'freesurfer', 'FREESURFER_HOME')
@@ -929,10 +955,10 @@ if __name__ == '__main__':
     os.environ['FREESURFER_HOME'] = freesurfer_home
 
     parser = argparse.ArgumentParser(description='Description of your program')
-    parser.add_argument('-s', '--subject', help='subject name', required=True, type=utils.str_arr_type)
+    parser.add_argument('-s', '--subject', help='subject name', required=True, type=au.str_arr_type)
     parser.add_argument('-a', '--atlas', help='atlas name', required=False, default='aparc.DKTatlas40')
     parser.add_argument('-f', '--function', help='function name', required=False, default='all')
-    parser.add_argument('-b', '--bipolar', help='bipolar electrodes', required=False, default='1,0', type=utils.bool_arr_type)
+    parser.add_argument('-b', '--bipolar', help='bipolar electrodes', required=False, default='1,0', type=au.bool_arr_type)
     parser.add_argument('--error_radius', help='error radius', required=False, default=3)
     parser.add_argument('--elc_length', help='elc length', required=False, default=4)
     parser.add_argument('--n_jobs', help='cpu num', required=False, default=-1)
@@ -951,8 +977,10 @@ if __name__ == '__main__':
     parser.add_argument('--solve_labels_collisions', help='solve_labels_collisions', required=False, default=0, type=bool)
     parser.add_argument('--remote_subject_dir_template', help='remote_subject_dir_template', required=False)
     parser.add_argument('--pos_fname', help='electrodes positions fname', required=False, default='')
-    args = utils.parse_parser(parser)
+    args = utils.Bag(au.parse_parser(parser))
+    args.n_jobs = utils.get_n_jobs(args.n_jobs)
     print(args)
+
     subjects, atlas = args['subject'], args['atlas'] # 'arc_april2016' # 'aparc.DKTatlas40' # 'laus250'
     os.environ['SUBJECT'] = subjects[0]
 
@@ -974,7 +1002,7 @@ if __name__ == '__main__':
     logging.basicConfig(filename='log.log',level=logging.DEBUG)
     for bipolar in args['bipolar']:
         output_files_post_fix = '_cigar_r_{}_l_{}{}{}'.format(args['error_radius'], args['elc_length'],
-            '_bipolar' if bipolar else '', '_stretch' if args['strech_to_dist'] and bipolar else '')
+            '_bipolar' if bipolar else '', '_not_stretch' if not args['strech_to_dist'] and bipolar else '')
         run_for_all_subjects(subjects, atlas, subjects_dir, bipolar, neccesary_files, remote_subject_dir_template,
                          output_files_post_fix, args, freesurfer_home, n_jobs)
         add_colors_to_probs(subjects, atlas, output_files_post_fix)
