@@ -957,7 +957,7 @@ if __name__ == '__main__':
     os.environ['SUBJECT'] = subjects[0]
 
     neccesary_files = {'mri': ['aseg.mgz'], 'surf': ['rh.pial', 'lh.pial', 'rh.sphere.reg', 'lh.sphere.reg', 'lh.white', 'rh.white']}
-    args.remote_subject_dir_template = {'template':'/space/huygens/1/users/mia/subjects/{subject}_SurferOutput', 'func': lambda x: x.upper()}
+    remote_subject_dir_template = {'template':'/space/huygens/1/users/mia/subjects/{subject}_SurferOutput', 'func': lambda x: x.upper()}
     # if subject == 'all':
     #     subjects = set(get_all_subjects(subjects_dir, 'mg', '_')) - set(['mg63', 'mg94']) # get_subjects()
     # else:
@@ -975,7 +975,7 @@ if __name__ == '__main__':
     for bipolar in args['bipolar']:
         output_files_post_fix = '_cigar_r_{}_l_{}{}{}'.format(args['error_radius'], args['elc_length'],
             '_bipolar' if bipolar else '', '_stretch' if args['strech_to_dist'] and bipolar else '')
-        run_for_all_subjects(subjects, atlas, subjects_dir, bipolar, neccesary_files, args.remote_subject_dir_template,
+        run_for_all_subjects(subjects, atlas, subjects_dir, bipolar, neccesary_files, remote_subject_dir_template,
                          output_files_post_fix, args, freesurfer_home, n_jobs)
         add_colors_to_probs(subjects, atlas, output_files_post_fix)
 
