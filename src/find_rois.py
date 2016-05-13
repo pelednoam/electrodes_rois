@@ -17,9 +17,11 @@ import logging
 from src import utils
 from src import labels_utils as lu
 from src import colors_utils as cu
+from src import freesurfer_utils as fu
 
 LINKS_DIR = utils.get_links_dir()
 DEPTH, GRID = range(2)
+EXISTING_FREESURFER_ANNOTATIONS = ['aparc.DKTatlas40.annot', 'aparc.annot', 'aparc.a2009s.annot']
 
 def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elecs_ori=None, approx=4, elc_length=1,
                             elecs_dists=None, elecs_types=None, strech_to_dist=False, enlarge_if_no_hit=False,
@@ -669,8 +671,18 @@ def get_all_subjects(subjects_dir, prefix, exclude_substr):
 
 
 def check_for_annot_file(subject, subjects_dir, atlas, fsaverage='fsaverage5c', overwrite_labels=False,
-        overwrite_annot=False, read_labels_from_annotation=False, solve_labels_collisions=False, n_jobs=6):
+        overwrite_annot=False, read_labels_from_annotation=False, solve_labels_collisions=False,
+        freesurfer_home='', n_jobs=6):
     annot_file = op.join(subjects_dir, subject, 'label', '{}.{}.annot'.format('{hemi}', atlas))
+    if '{}.annot'.format(atlas) in EXISTING_FREESURFER_ANNOTATIONS and \
+            (not op.isfile(annot_file.format(hemi='rh')) or not op.isfile(annot_file.format(hemi='lh'))):
+        overwrite_annot = False
+        solve_labels_collisions = False
+        if freesurfer_home == '':
+            freesurfer_home = os.environ.get('FREESURFER_HOME', '')
+        if freesurfer_home == '':
+            raise Exception('There are no annotation file for {}, please source freesurfer and run again'.format(atlas))
+        fu.create_freesurfer_annotation_file(subject, atlas, subjects_dir, freesurfer_home)
     if read_labels_from_annotation and op.isfile(annot_file.format(hemi='rh')) and \
             op.isfile(annot_file.format(hemi='lh')):
         # Nothing to do, read the labels from an existing annotation file
@@ -824,7 +836,7 @@ def rename_and_convert_electrodes_file(subject, subjects_dir):
 
 
 def run_for_all_subjects(subjects, atlas, subjects_dir, bipolar_electrodes, neccesary_files,
-                         remote_subject_dir_template, output_files_post_fix, args, n_jobs):
+                         remote_subject_dir_template, output_files_post_fix, args, freesurfer_home, n_jobs):
     ok_subjects, bad_subjects = [], []
     results = {}
     for subject in subjects:
@@ -841,7 +853,7 @@ def run_for_all_subjects(subjects, atlas, subjects_dir, bipolar_electrodes, necc
                     check_for_necessary_files(subjects_dir, subject, neccesary_files, remote_subject_dir_template)
                     check_for_annot_file(subject, subjects_dir, atlas, args['template_brain'], args['overwrite_labels'],
                         args['overwrite_annotation'], args['read_labels_from_annotation'], args['solve_labels_collisions'],
-                        n_jobs=n_jobs)
+                        freesurfer_home, n_jobs=n_jobs)
                     if args['only_check_files']:
                         continue
                     elecs_names, elecs_pos, elecs_dists, elecs_types = get_electrodes(

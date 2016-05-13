@@ -3,6 +3,8 @@ import shutil
 import numpy as np
 import multiprocessing
 import traceback
+from functools import partial
+import subprocess
 try:
     import cPickle as pickle
 except:
@@ -227,3 +229,25 @@ def is_true(val):
             raise Exception('Wrong value for boolean variable')
     else:
         return bool(val)
+
+
+def partial_run_script(vars, more_vars=None, print_only=False):
+    return partial(_run_script_wrapper, vars=vars, print_only=print_only)
+
+
+def _run_script_wrapper(cmd, vars, print_only=False, **kwargs):
+    for k,v in kwargs.items():
+        vars[k] = v
+    print(cmd.format(**vars))
+    if not print_only:
+        run_script(cmd.format(**vars))
+
+
+def run_script(cmd, verbose=False):
+    if verbose:
+        print('running: {}'.format(cmd))
+    output = subprocess.check_output('{} | tee /dev/stderr'.format(cmd),
+                                     shell=True)
+    print(output)
+    return output
+
