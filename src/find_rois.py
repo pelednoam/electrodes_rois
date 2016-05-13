@@ -440,8 +440,8 @@ def grid_or_depth(data):
     group_type = {}
     electrodes_group_type = [None] * pos.shape[0]
     for index in range(data.shape[0] - 1):
-        elc_group1, elc_num1 = elec_group_number(data[index, 0])
-        elc_group2, elc_num12 = elec_group_number(data[index + 1, 0])
+        elc_group1, _ = elec_group_number(data[index, 0])
+        elc_group2, _ = elec_group_number(data[index + 1, 0])
         if elc_group1 == elc_group2:
             dists[elc_group1].append(np.linalg.norm(pos[index + 1] - pos[index]))
     for group, group_dists in dists.items():
@@ -456,7 +456,30 @@ def grid_or_depth(data):
     return np.array(electrodes_group_type)
 
 
-def get_electrodes(subject, bipolar=False, elecs_dir='', delimiter=','):
+def get_electrodes_from_file(pos_fname, bipolar):
+    f = np.load(pos_fname)
+    if 'pos' not in f or 'names' not in f:
+        raise Exception('electrodes posistions file was given, but without the fields "pos" or "names"!')
+    pos, names = f['pos'], f['names']
+    if not bipolar:
+        dists = [np.linalg.norm(p2 - p1) for p1, p2 in zip(pos[:-1], pos[1:])]
+        # Add the distance for the last electrode
+        dists.append(0.)
+    else:
+        for ind in range(len(names) - 1):
+            group1, _, _ = elec_group_number(names[ind], True)
+            group2, _, _ = elec_group_number(names[ind], True)
+            names[ind + 1]
+
+
+def get_electrodes(subject, bipolar, elecs_dir='', delimiter=',', pos_fname=''):
+    if pos_fname != '':
+        f = np.load(pos_fname)
+        if 'pos' not in f or 'names' not in f or 'dists' not in f:
+            raise Exception('electrodes posistions file was given, but without the fields' +
+                            '"pos", "names", "dists" or "electrodes_types!')
+        return f['names'], f['pos'], f['dists'], f['electrodes_types']
+
     if elecs_dir=='':
         elecs_dir = get_electrodes_dir()
     elec_file = op.join(elecs_dir, '{}.csv'.format(subject))
@@ -821,7 +844,8 @@ def run_for_all_subjects(subjects, atlas, subjects_dir, bipolar_electrodes, necc
                         n_jobs=n_jobs)
                     if args['only_check_files']:
                         continue
-                    elecs_names, elecs_pos, elecs_dists, elecs_types = get_electrodes(subject, bipolar_electrodes)
+                    elecs_names, elecs_pos, elecs_dists, elecs_types = get_electrodes(
+                        subject, bipolar_electrodes, args.pos_fname)
                     elcs_ori = get_electrodes_orientation(elecs_names, elecs_pos, bipolar_electrodes, elecs_types)
                     labels = read_labels_vertices(subjects_dir, subject, atlas, args['read_labels_from_annotation'],
                         args['overwrite_labels_pkl'], n_jobs)
@@ -913,13 +937,15 @@ if __name__ == '__main__':
     parser.add_argument('--overwrite_csv', help='overwrite_csv', required=False, default=1, type=bool)
     parser.add_argument('--read_labels_from_annotation', help='read_labels_from_annotation', required=False, default=1, type=bool)
     parser.add_argument('--solve_labels_collisions', help='solve_labels_collisions', required=False, default=0, type=bool)
+    parser.add_argument('--remote_subject_dir_template', help='remote_subject_dir_template', required=False)
+    parser.add_argument('--pos_fname', help='electrodes positions fname', required=False, default='')
     args = utils.parse_parser(parser)
     print(args)
     subjects, atlas = args['subject'], args['atlas'] # 'arc_april2016' # 'aparc.DKTatlas40' # 'laus250'
     os.environ['SUBJECT'] = subjects[0]
 
     neccesary_files = {'mri': ['aseg.mgz'], 'surf': ['rh.pial', 'lh.pial', 'rh.sphere.reg', 'lh.sphere.reg', 'lh.white', 'rh.white']}
-    remote_subject_dir_template = {'template':'/space/huygens/1/users/mia/subjects/{subject}_SurferOutput', 'func': lambda x: x.upper()}
+    args.remote_subject_dir_template = {'template':'/space/huygens/1/users/mia/subjects/{subject}_SurferOutput', 'func': lambda x: x.upper()}
     # if subject == 'all':
     #     subjects = set(get_all_subjects(subjects_dir, 'mg', '_')) - set(['mg63', 'mg94']) # get_subjects()
     # else:
@@ -937,7 +963,7 @@ if __name__ == '__main__':
     for bipolar in args['bipolar']:
         output_files_post_fix = '_cigar_r_{}_l_{}{}{}'.format(args['error_radius'], args['elc_length'],
             '_bipolar' if bipolar else '', '_stretch' if args['strech_to_dist'] and bipolar else '')
-        run_for_all_subjects(subjects, atlas, subjects_dir, bipolar, neccesary_files, remote_subject_dir_template,
+        run_for_all_subjects(subjects, atlas, subjects_dir, bipolar, neccesary_files, args.remote_subject_dir_template,
                          output_files_post_fix, args, n_jobs)
         add_colors_to_probs(subjects, atlas, output_files_post_fix)
 
