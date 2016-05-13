@@ -976,7 +976,7 @@ if __name__ == '__main__':
         output_files_post_fix = '_cigar_r_{}_l_{}{}{}'.format(args['error_radius'], args['elc_length'],
             '_bipolar' if bipolar else '', '_stretch' if args['strech_to_dist'] and bipolar else '')
         run_for_all_subjects(subjects, atlas, subjects_dir, bipolar, neccesary_files, args.remote_subject_dir_template,
-                         output_files_post_fix, args, n_jobs)
+                         output_files_post_fix, args, freesurfer_home, n_jobs)
         add_colors_to_probs(subjects, atlas, output_files_post_fix)
 
     print('finish!')
