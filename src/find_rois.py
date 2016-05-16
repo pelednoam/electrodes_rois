@@ -563,12 +563,7 @@ def get_electrodes_dir():
     return elec_dir
 
 
-def write_results_to_csv(results, atlas, elecs_dir='', post_fix='',
-        write_only_cortical=False, write_only_subcortical=False):
-
-    if elecs_dir=='':
-        elecs_dir = get_electrodes_dir()
-
+def write_results_to_csv(results, results_fname_csv, write_only_cortical=False, write_only_subcortical=False):
     cortical_rois, subcortical_rois = [], []
     for elecs in results.values():
         for elc in elecs:
@@ -578,26 +573,26 @@ def write_results_to_csv(results, atlas, elecs_dir='', post_fix='',
     subcortical_rois = list(np.unique(subcortical_rois))
 
     for subject, elecs in results.items():
-        write_values(elecs, ['electrode'] + cortical_rois + subcortical_rois + ['approx', 'elc_length'],
+        write_values(elecs, results_fname_csv,
+            ['electrode'] + cortical_rois + subcortical_rois + ['approx', 'elc_length'],
             [cortical_rois, subcortical_rois],
-            ['cortical_rois','subcortical_rois'], ['cortical_probs', 'subcortical_probs'],
-            op.join(elecs_dir, '{}_{}_electrodes_all_rois{}.csv'.format(subject, atlas, post_fix)))
+            ['cortical_rois','subcortical_rois'], ['cortical_probs', 'subcortical_probs'])
 
         if write_only_cortical:
-            write_values(elecs, ['electrode'] + cortical_rois, [cortical_rois],['cortical_rois'], ['cortical_probs'],
-                op.join(elecs_dir, '{}_{}_electrodes_cortical_rois{}.csv'.format(subject, atlas, post_fix)))
+            write_values(elecs, results_fname_csv.replace('electrodes', 'cortical_electrodes'),
+                ['electrode'] + cortical_rois, [cortical_rois],['cortical_rois'], ['cortical_probs'])
 
         if write_only_subcortical:
-            write_values(elecs, ['electrode']  + subcortical_rois, [subcortical_rois],
-                ['subcortical_rois'], ['subcortical_probs'],
-                op.join(elecs_dir, '{}_{}_electrodes_subcortical_rois{}.csv'.format(subject, atlas, post_fix)))
+            write_values(elecs, results_fname_csv.replace('electrodes', 'subcortical_electrodes'),
+                ['electrode']  + subcortical_rois, [subcortical_rois],
+                ['subcortical_rois'], ['subcortical_probs'])
 
 
-def write_values(elecs, header, rois_arr, rois_names, probs_names, file_name):
-    with open(file_name, 'w') as fp:
+def write_values(elecs, results_fname, header, rois_arr, rois_names, probs_names):
+    with open(results_fname, 'w') as fp:
         writer = csv.writer(fp, delimiter=',')
         writer.writerow(header)
-        print('Writing {} with header length of {}'.format(file_name, len(header)))
+        print('Writing {} with header length of {}'.format(results_fname, len(header)))
         for elc in elecs:
             values = [elc['name']]
             for rois, rois_field, prob_field in zip(rois_arr, rois_names, probs_names):
@@ -859,37 +854,39 @@ def rename_and_convert_electrodes_file(subject, subjects_dir):
 
 
 def run_for_all_subjects(subjects, atlas, subjects_dir, bipolar_electrodes, neccesary_files,
-                         remote_subject_dir_template, output_files_post_fix, args, freesurfer_home, n_jobs):
+                         remote_subject_dir_template, output_files_post_fix, args, freesurfer_home):
     ok_subjects, bad_subjects = [], []
     results = {}
     for subject in subjects:
-        output_file = op.join(get_electrodes_dir(), '{}_{}_electrodes_all_rois{}.csv'.format(subject, atlas, output_files_post_fix))
-        if not op.isfile(output_file) or args['overwrite_csv']:
+        print('****************** {} ******************'.format(subject))
+        logging.info('****************** {} ******************'.format(subject))
+        results_fname_csv = op.join(get_electrodes_dir(), '{}_{}_electrodes{}.csv'.format(
+            subject, atlas, output_files_post_fix))
+        results_fname_pkl = results_fname_csv.replace('csv', 'pkl')
+        if not op.isfile(results_fname_csv) or args.overwrite_csv:
             try:
-                results_fname = op.join(get_electrodes_dir(), '{}_{}_electrodes_{}.pkl'.format(
-                    subject, atlas, output_files_post_fix))
-                if op.isfile(results_fname) and not args['overwrite']:
-                    elecs = utils.load(results_fname)
-                else:
-                    print('****************** {} ******************'.format(subject))
-                    logging.info('****************** {} ******************'.format(subject))
+                if op.isfile(results_fname_pkl) and not args.overwrite:
+                    elecs = utils.load(results_fname_pkl)
+                elif 'all' in args.function:
                     check_for_necessary_files(subjects_dir, subject, neccesary_files, remote_subject_dir_template)
-                    check_for_annot_file(subject, subjects_dir, atlas, args['template_brain'], args['overwrite_labels'],
-                        args['overwrite_annotation'], args['read_labels_from_annotation'], args['solve_labels_collisions'],
-                        freesurfer_home, n_jobs=n_jobs)
-                    if args['only_check_files']:
+                    check_for_annot_file(subject, subjects_dir, atlas, args.template_brain, args.overwrite_labels,
+                        args.overwrite_annotation, args.read_labels_from_annotation, args.solve_labels_collisions,
+                        freesurfer_home, n_jobs=args.n_jobs)
+                    if args.only_check_files:
                         continue
                     elecs_names, elecs_pos, elecs_dists, elecs_types = get_electrodes(
-                        subject, bipolar_electrodes, pos_fname=args['pos_fname'])
+                        subject, bipolar_electrodes, pos_fname=args.pos_fname)
                     elcs_ori = get_electrodes_orientation(
-                        elecs_names, elecs_pos, bipolar_electrodes, elecs_types, elecs_oris_fname=args['pos_fname'])
-                    labels = read_labels_vertices(subjects_dir, subject, atlas, args['read_labels_from_annotation'],
-                        args['overwrite_labels_pkl'], n_jobs)
+                        elecs_names, elecs_pos, bipolar_electrodes, elecs_types, elecs_oris_fname=args.pos_fname)
+                    labels = read_labels_vertices(subjects_dir, subject, atlas, args.read_labels_from_annotation,
+                        args.overwrite_labels_pkl, args.n_jobs)
                     elecs = identify_roi_from_atlas(
-                        labels, elecs_names, elecs_pos, elcs_ori, args['error_radius'], args['elc_length'],
-                        elecs_dists, elecs_types, args['strech_to_dist'], args['enlarge_if_no_hit'],
-                        bipolar_electrodes, subjects_dir, subject, n_jobs)
-                    utils.save(elecs, results_fname)
+                        labels, elecs_names, elecs_pos, elcs_ori, args.error_radius, args.elc_length,
+                        elecs_dists, elecs_types, args.strech_to_dist, args.enlarge_if_no_hit,
+                        bipolar_electrodes, subjects_dir, subject, args.n_jobs)
+                    utils.save(elecs, results_fname_pkl)
+                if au.should_run('add_colors_to_probs', args):
+                    add_colors_to_probs(subject, atlas, results_fname_pkl)
                 results[subject] = elecs
                 ok_subjects.append(subject)
             except:
@@ -898,8 +895,8 @@ def run_for_all_subjects(subjects, atlas, subjects_dir, bipolar_electrodes, necc
                 print(traceback.format_exc())
 
     # Write the results for all the subjects at once, to have a common labeling
-    write_results_to_csv(results, atlas, post_fix=output_files_post_fix,
-        write_only_cortical=args['write_only_cortical'], write_only_subcortical=args['write_only_subcortical'])
+    write_results_to_csv(results, results_fname_csv, write_only_cortical=args.write_only_cortical,
+                         write_only_subcortical=args.write_only_subcortical)
 
     if ok_subjects:
         print('ok subjects:')
@@ -911,16 +908,17 @@ def run_for_all_subjects(subjects, atlas, subjects_dir, bipolar_electrodes, necc
         logging.error(bad_subjects)
 
 
-def add_colors_to_probs(subjects, atlas, output_files_post_fix):
-    for subject in subjects:
-        results_fname = op.join(get_electrodes_dir(), '{}_{}_electrodes_all_rois{}.pkl'.format(
-            subject, atlas, output_files_post_fix))
-        if op.isfile(results_fname):
-            elecs = utils.load(results_fname)
-            for elc in elecs:
-                elc['subcortical_colors'] = cu.arr_to_colors(elc['subcortical_probs'], colors_map='YlOrRd')
-                elc['cortical_colors'] = cu.arr_to_colors(elc['cortical_probs'], colors_map='YlOrRd')
-            utils.save(elecs, results_fname)
+def add_colors_to_probs(subject, atlas, results_fname):
+    # results_fname = op.join(get_electrodes_dir(), '{}_{}_electrodes{}.pkl'.format(
+    #     subject, atlas, output_files_post_fix))
+    if op.isfile(results_fname):
+        elecs = utils.load(results_fname)
+        for elc in elecs:
+            elc['subcortical_colors'] = cu.arr_to_colors(elc['subcortical_probs'], colors_map='YlOrRd')
+            elc['cortical_colors'] = cu.arr_to_colors(elc['cortical_probs'], colors_map='YlOrRd')
+        utils.save(elecs, results_fname)
+    else:
+        print("!!! Can't find the probabilities file !!!")
 
 
 def remove_white_matter_and_normalize(elc):
@@ -977,6 +975,7 @@ if __name__ == '__main__':
     parser.add_argument('--solve_labels_collisions', help='solve_labels_collisions', required=False, default=0, type=bool)
     parser.add_argument('--remote_subject_dir_template', help='remote_subject_dir_template', required=False)
     parser.add_argument('--pos_fname', help='electrodes positions fname', required=False, default='')
+    parser.add_argument('--output_postfix', help='output_postfix', required=False, default='')
     args = utils.Bag(au.parse_parser(parser))
     args.n_jobs = utils.get_n_jobs(args.n_jobs)
     print(args)
@@ -990,21 +989,11 @@ if __name__ == '__main__':
     #     subjects = set(get_all_subjects(subjects_dir, 'mg', '_')) - set(['mg63', 'mg94']) # get_subjects()
     # else:
     #     subjects = [subject]
-
-    cpu_num = utils.cpu_count()
-    n_jobs = int(args['n_jobs'])
-    if n_jobs > cpu_num:
-        n_jobs = cpu_num
-    elif n_jobs < 0:
-        n_jobs = cpu_num + n_jobs
-
-    print('n_jobs: {}'.format(n_jobs))
     logging.basicConfig(filename='log.log',level=logging.DEBUG)
     for bipolar in args['bipolar']:
-        output_files_post_fix = '_cigar_r_{}_l_{}{}{}'.format(args['error_radius'], args['elc_length'],
-            '_bipolar' if bipolar else '', '_not_stretch' if not args['strech_to_dist'] and bipolar else '')
+        output_files_post_fix = '_cigar_r_{}_l_{}{}{}{}'.format(args['error_radius'], args['elc_length'],
+            '_bipolar' if bipolar else '', '_not_stretch' if not args['strech_to_dist'] and bipolar else '',
+            args.output_postfix)
         run_for_all_subjects(subjects, atlas, subjects_dir, bipolar, neccesary_files, remote_subject_dir_template,
-                         output_files_post_fix, args, freesurfer_home, n_jobs)
-        add_colors_to_probs(subjects, atlas, output_files_post_fix)
-
+                         output_files_post_fix, args, freesurfer_home)
     print('finish!')

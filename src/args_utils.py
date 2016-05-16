@@ -67,3 +67,7 @@ def str_arr_to_markers(args, field_name):
             time, marker = args[field_name][ind], args[field_name][ind + 1]
             ret.append((float(time), marker.replace('_', ' ')))
         return ret
+
+
+def should_run(func_name, args):
+    return 'all' in args.function or func_name in args.function
