@@ -800,6 +800,13 @@ def prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, 
             if not op.isfile(op.join(local_subject_dir, fol, file_name)):
                 logging.error("The file {} doesn't exist in the local subjects folder!!!".format(file_name))
                 all_files_exists = False
+    local_ras_fname = op.join(local_subject_dir, 'electrodes', '{}_RAS.xlsx'.format(subject.upper()))
+    remote_ras_fname = op.join(remote_subject_dir, '{}_RAS.xlsx'.format(subject.upper()))
+    if not op.isfile(local_ras_fname) and op.isfile(remote_ras_fname):
+        shutil.copyfile(remote_ras_fname, local_ras_fname)
+    if not op.isfile(local_ras_fname):
+        raise Exception("Can't find electrodes RAS coordinates! {}".format(local_ras_fname))
+        logging.error("Can't find electrodes RAS coordinates! {}".format(local_ras_fname))
     if not all_files_exists:
         raise Exception('Not all files exist in the local subject folder!!!')
         logging.error('{}: {}'.format(subject, 'Not all files exist in the local subject folder!!!'))
@@ -983,8 +990,8 @@ if __name__ == '__main__':
     subjects, atlas = args['subject'], args['atlas'] # 'arc_april2016' # 'aparc.DKTatlas40' # 'laus250'
     os.environ['SUBJECT'] = subjects[0]
 
-    neccesary_files = {'mri': ['aseg.mgz'], 'surf': ['rh.pial', 'lh.pial', 'rh.sphere.reg', 'lh.sphere.reg', 'lh.white', 'rh.white']}
-    remote_subject_dir_template = {'template':'/space/huygens/1/users/mia/subjects/{subject}_SurferOutput', 'func': lambda x: x.upper()}
+    neccesary_files = {'mri': ['aseg.mgz'], 'surf': ['rh.pial', 'lh.pial', 'rh.sphere.reg', 'lh.sphere.reg', 'lh.white', 'rh.white', 'lh.smoothwm', 'rh.smoothwm']}
+    remote_subject_dir_template = {'template':'/home/ieluuser/links/subjects/{subject}_SurferOutput', 'func': lambda x: x.upper()}
     # if subject == 'all':
     #     subjects = set(get_all_subjects(subjects_dir, 'mg', '_')) - set(['mg63', 'mg94']) # get_subjects()
     # else:
