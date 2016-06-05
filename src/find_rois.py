@@ -23,6 +23,7 @@ LINKS_DIR = utils.get_links_dir()
 DEPTH, GRID = range(2)
 EXISTING_FREESURFER_ANNOTATIONS = ['aparc.DKTatlas40.annot', 'aparc.annot', 'aparc.a2009s.annot']
 
+
 def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elecs_ori=None, approx=4, elc_length=1,
                             elecs_dists=None, elecs_types=None, strech_to_dist=False, enlarge_if_no_hit=False,
                             bipolar_electrodes=False, subjects_dir=None, subject=None, n_jobs=6,
@@ -68,7 +69,7 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elecs_ori=None, appr
     for hemi in ['rh', 'lh']:
         pia_verts[hemi], _ = nib.freesurfer.read_geometry(
             op.join(subjects_dir, subject, 'surf', '{}.pial'.format(hemi)))
-    pia = np.vstack((pia_verts['lh'], pia_verts['rh']))
+    # pia = np.vstack((pia_verts['lh'], pia_verts['rh']))
     len_lh_pia = len(pia_verts['lh'])
 
     elecs = []
@@ -76,42 +77,47 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elecs_ori=None, appr
         elecs_ori = [None] * len(elecs_pos)
     if elecs_types is None:
         elecs_types = [DEPTH] * len (elecs_pos)
+
     elecs_data = list(enumerate(zip(elecs_pos, elecs_names, elecs_ori, elecs_dists, elecs_types)))
         # [(elc_num, elec_pos, elec_name, elc_ori, elc_dist, elc_type) for
         #           elc_num, (elec_pos, elec_name, elc_ori, elc_dist, elc_type) in
         #           enumerate(zip(elecs_pos, elecs_names, elcs_ori, elecs_dists, elecs_types))]
     N = len(elecs_data)
     elecs_data_chunks = utils.chunks(elecs_data, len(elecs_data) / n_jobs)
-    params = [(elecs_data_chunk, subject, subjects_dir, labels, aseg_data, lut, pia, len_lh_pia, approx, elc_length, nei_dimensions,
+    params = [(elecs_data_chunk, subject, subjects_dir, labels, aseg_data, lut, pia_verts, len_lh_pia, approx, elc_length, nei_dimensions,
                strech_to_dist, enlarge_if_no_hit, bipolar_electrodes, N) for elecs_data_chunk in elecs_data_chunks]
     print('run with {} jobs'.format(n_jobs))
     results = utils.run_parallel(_find_elecs_roi_parallel, params, n_jobs)
     for results_chunk in results:
-        for elec_name, regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length in results_chunk:
-            regions_probs = np.hstack((regions_hits, subcortical_hits)) / float(np.sum(regions_hits) + np.sum(subcortical_hits))
+        for elec_name, regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length,\
+                elec_hemi_vertices, hemi in results_chunk:
+            regions_probs = np.hstack((regions_hits, subcortical_hits)) / float(
+                np.sum(regions_hits) + np.sum(subcortical_hits))
             if not np.allclose([np.sum(regions_probs)],[1.0]):
                 logging.warning('Warning!!! {}: sum(regions_probs) = {}!'.format(elec_name, sum(regions_probs)))
             elecs.append({'name': elec_name, 'cortical_rois': regions, 'subcortical_rois': subcortical_regions,
                 'cortical_probs': regions_probs[:len(regions)],
-                'subcortical_probs': regions_probs[len(regions):], 'approx': approx, 'elc_length': elc_length})
+                'subcortical_probs': regions_probs[len(regions):], 'approx': approx, 'elc_length': elc_length,
+                'cortical_indices': elec_hemi_vertices, 'hemi': hemi})
     return elecs
 
 
 def _find_elecs_roi_parallel(params):
     results = []
-    elecs_data_chunk, subject, subjects_dir, labels, aseg_data, lut, pia, len_lh_pia, approx, elc_length,\
+    elecs_data_chunk, subject, subjects_dir, labels, aseg_data, lut, pia_verts, len_lh_pia, approx, elc_length,\
         nei_dimensions, strech_to_dist, enlarge_if_no_hit, bipolar_electrodes, N = params
     for elc_num, (elec_pos, elec_name, elc_ori, elc_dist, elc_type) in elecs_data_chunk:
         print('{}: {} / {}'.format(elec_name, elc_num, N))
-        regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length = \
-            identify_roi_from_atlas_per_electrode(labels, elec_pos, pia, len_lh_pia, lut,
+        regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length, elec_hemi_vertices, hemi = \
+            identify_roi_from_atlas_per_electrode(labels, elec_pos, pia_verts, len_lh_pia, lut,
                 aseg_data, elec_name, approx, elc_length, nei_dimensions, elc_ori, elc_dist, elc_type, strech_to_dist,
                 enlarge_if_no_hit, bipolar_electrodes, subjects_dir, subject, n_jobs=1)
-        results.append((elec_name, regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length))
+        results.append((elec_name, regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length,
+                        elec_hemi_vertices, hemi))
     return results
 
 
-def identify_roi_from_atlas_per_electrode(labels, pos, pia, len_lh_pia, lut, aseg_data, elc_name,
+def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lut, aseg_data, elc_name,
       approx=4, elc_length=1, nei_dimensions=None, elc_ori=None, elc_dist=0, elc_type=DEPTH, strech_to_dist=False,
       enlarge_if_no_hit=False, bipolar_electrodes=False, subjects_dir=None, subject=None, n_jobs=1):
     '''
@@ -131,24 +137,28 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia, len_lh_pia, lut, ase
     '''
 
     # find closest vertex
+    pia = np.vstack((pia_verts['lh'], pia_verts['rh']))
     closest_vert = np.argmin(cdist(pia, [pos]))
 
     # we force the label to only contact one hemisphere even if it is
     # beyond the extent of the medial surface
     hemi_str = 'lh' if closest_vert<len_lh_pia else 'rh'
-    hemi_code = 0 if hemi_str=='lh' else 1
+    # hemi_code = 0 if hemi_str=='lh' else 1
 
     if hemi_str == 'rh':
         closest_vert -= len_lh_pia
 
+    # todo: send the verts to the function
     surf_fname = op.join(subjects_dir, subject, 'surf', hemi_str + '.pial')
     verts, _ = read_surface(surf_fname)
-    closest_vert_pos = verts[closest_vert]
+    # closest_vert_pos = verts[closest_vert]
 
     if elc_type == GRID:
         elc_dist = 0
         elc_length = 0
         elc_ori = None
+
+    # elc_line = get_elec_line(pos, elc_ori, elc_length)
 
     we_have_a_hit = False
     if strech_to_dist and bipolar_electrodes and elc_length < elc_dist:
@@ -160,10 +170,12 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia, len_lh_pia, lut, ase
 
         # bins = calc_neighbors(closest_vert_pos, approx + elc_length, nei_dimensions, calc_bins=True)
         bins = calc_neighbors(pos, approx + elc_length, nei_dimensions, calc_bins=True)
-        if not elc_ori is None:
-            elc_line = [pos + elc_ori*t for t in np.linspace(-elc_length/2.0, elc_length/2.0, 100)]
-        else:
-            elc_line = [pos]
+        elc_line = get_elec_line(pos, elc_ori, elc_length)
+
+        hemi_verts_dists = np.min(cdist(elc_line, pia_verts[hemi_str]), 0)
+        elec_hemi_vertices_mask = hemi_verts_dists < approx
+        hemi_vertices_indices = np.arange(len(pia_verts[hemi_str]))
+        elec_hemi_vertices = hemi_vertices_indices[elec_hemi_vertices_mask]
 
         # excludes=['white', 'WM', 'Unknown', 'White', 'unknown', 'Cerebral-Cortex']
         excludes=['Unknown', 'unknown', 'Cerebral-Cortex', 'corpuscallosum']
@@ -199,7 +211,16 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia, len_lh_pia, lut, ase
                 logging.warning('Grid electrode ({}) without a cortical hit?!?!'.format(elc_name))
             print('No hit! Recalculate with a bigger cigar')
 
-    return regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length
+    return regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length,\
+           elec_hemi_vertices, hemi_str
+
+
+def get_elec_line(elec_pos, elec_ori, elec_length, points_number=100):
+    if not elec_ori is None:
+        elc_line = [elec_pos + elec_ori * t for t in np.linspace(-elec_length / 2.0, elec_length / 2.0, points_number)]
+    else:
+        elc_line = [elec_pos]
+    return elc_line
 
 
 def calc_hits(labels, hemi_str, surf_verts, elc_line, bins, approx, _region_is_excluded):
@@ -704,7 +725,8 @@ def check_for_annot_file(subject, subjects_dir, atlas, fsaverage='fsaverage5c', 
         return
     if overwrite_labels or overwrite_annot or not op.isfile(annot_file.format(hemi='rh')) or not \
             op.isfile(annot_file.format(hemi='lh')):
-        morph_labels_from_fsaverage(subject, subjects_dir, atlas, n_jobs=n_jobs, fsaverage=fsaverage, overwrite=overwrite_labels)
+        morph_labels_from_fsaverage(subject, subjects_dir, atlas, n_jobs=n_jobs, fsaverage=fsaverage,
+                                    overwrite=overwrite_labels)
         if solve_labels_collisions:
             backup_labels_fol = '{}_before_solve_collision'.format(atlas, fsaverage)
             lu.solve_labels_collision(subject, subjects_dir, atlas, backup_labels_fol, n_jobs)
@@ -712,7 +734,8 @@ def check_for_annot_file(subject, subjects_dir, atlas, fsaverage='fsaverage5c', 
         # labels_to_annot(subject, subjects_dir, atlas, overwrite=overwrite_annot)
 
 
-def morph_labels_from_fsaverage(subject, subjects_dir='', aparc_name='aparc250', fs_labels_fol='', sub_labels_fol='', n_jobs=6, fsaverage='fsaverage', overwrite=False):
+def morph_labels_from_fsaverage(subject, subjects_dir='', aparc_name='aparc250', fs_labels_fol='', sub_labels_fol='',
+                                n_jobs=6, fsaverage='fsaverage', overwrite=False):
     if subjects_dir=='':
         subjects_dir = os.environ['SUBJECTS_DIR']
     subject_dir = op.join(subjects_dir, subject)
@@ -807,7 +830,7 @@ def prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, 
 
 
 def copy_electrodes_ras_file(subject, local_subject_dir, remote_subject_dir):
-    local_file_found = False
+    # local_file_found = False
     for local_ras_fname, remote_ras_fname in zip(
             [op.join(local_subject_dir, 'electrodes', '{}_RAS.xlsx'.format(subject.upper())),
              op.join(local_subject_dir, 'electrodes', '{}_RAS.xlsx'.format(subject))],
@@ -817,10 +840,10 @@ def copy_electrodes_ras_file(subject, local_subject_dir, remote_subject_dir):
         # remote_ras_fname = op.join(remote_subject_dir, '{}_RAS.xlsx'.format(subject.upper()))
         if not op.isfile(local_ras_fname) and op.isfile(remote_ras_fname):
             shutil.copyfile(remote_ras_fname, local_ras_fname)
-        local_file_found = local_file_found or op.isfile(local_ras_fname)
-    if not local_file_found:
-        raise Exception("Can't find electrodes RAS coordinates! {}".format(local_ras_fname))
-        logging.error("Can't find electrodes RAS coordinates! {}".format(local_ras_fname))
+        # local_file_found = local_file_found or op.isfile(local_ras_fname)
+    # if not local_file_found and not op.isfile():
+    #     raise Exception("Can't find electrodes RAS coordinates! {}".format(local_ras_fname))
+    #     logging.error("Can't find electrodes RAS coordinates! {}".format(local_ras_fname))
 
 
 def check_for_necessary_files(subjects_dir, subject, neccesary_files, remote_subject_dir_template):
