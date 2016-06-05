@@ -800,16 +800,27 @@ def prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, 
             if not op.isfile(op.join(local_subject_dir, fol, file_name)):
                 logging.error("The file {} doesn't exist in the local subjects folder!!!".format(file_name))
                 all_files_exists = False
-    local_ras_fname = op.join(local_subject_dir, 'electrodes', '{}_RAS.xlsx'.format(subject.upper()))
-    remote_ras_fname = op.join(remote_subject_dir, '{}_RAS.xlsx'.format(subject.upper()))
-    if not op.isfile(local_ras_fname) and op.isfile(remote_ras_fname):
-        shutil.copyfile(remote_ras_fname, local_ras_fname)
-    if not op.isfile(local_ras_fname):
-        raise Exception("Can't find electrodes RAS coordinates! {}".format(local_ras_fname))
-        logging.error("Can't find electrodes RAS coordinates! {}".format(local_ras_fname))
+    copy_electrodes_ras_file(subject, local_subject_dir, remote_subject_dir)
     if not all_files_exists:
         raise Exception('Not all files exist in the local subject folder!!!')
         logging.error('{}: {}'.format(subject, 'Not all files exist in the local subject folder!!!'))
+
+
+def copy_electrodes_ras_file(subject, local_subject_dir, remote_subject_dir):
+    local_file_found = False
+    for local_ras_fname, remote_ras_fname in zip(
+            [op.join(local_subject_dir, 'electrodes', '{}_RAS.xlsx'.format(subject.upper())),
+             op.join(local_subject_dir, 'electrodes', '{}_RAS.xlsx'.format(subject))],
+            [op.join(remote_subject_dir, '{}_RAS.xlsx'.format(subject.upper())),
+             op.join(remote_subject_dir, '{}_RAS.xlsx'.format(subject))]):
+        # local_ras_fname = op.join(local_subject_dir, 'electrodes', '{}_RAS.xlsx'.format(subject.upper()))
+        # remote_ras_fname = op.join(remote_subject_dir, '{}_RAS.xlsx'.format(subject.upper()))
+        if not op.isfile(local_ras_fname) and op.isfile(remote_ras_fname):
+            shutil.copyfile(remote_ras_fname, local_ras_fname)
+        local_file_found = local_file_found or op.isfile(local_ras_fname)
+    if not local_file_found:
+        raise Exception("Can't find electrodes RAS coordinates! {}".format(local_ras_fname))
+        logging.error("Can't find electrodes RAS coordinates! {}".format(local_ras_fname))
 
 
 def check_for_necessary_files(subjects_dir, subject, neccesary_files, remote_subject_dir_template):
