@@ -90,7 +90,7 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elecs_ori=None, appr
     results = utils.run_parallel(_find_elecs_roi_parallel, params, n_jobs)
     for results_chunk in results:
         for elec_name, regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length,\
-                elec_hemi_vertices, hemi in results_chunk:
+                elec_hemi_vertices, elec_hemi_vertices_dists, hemi in results_chunk:
             regions_probs = np.hstack((regions_hits, subcortical_hits)) / float(
                 np.sum(regions_hits) + np.sum(subcortical_hits))
             if not np.allclose([np.sum(regions_probs)],[1.0]):
@@ -98,7 +98,8 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elecs_ori=None, appr
             elecs.append({'name': elec_name, 'cortical_rois': regions, 'subcortical_rois': subcortical_regions,
                 'cortical_probs': regions_probs[:len(regions)],
                 'subcortical_probs': regions_probs[len(regions):], 'approx': approx, 'elc_length': elc_length,
-                'cortical_indices': elec_hemi_vertices, 'hemi': hemi})
+                'cortical_indices': elec_hemi_vertices, 'cortical_indices_dists':elec_hemi_vertices_dists,
+                'hemi': hemi})
     return elecs
 
 
@@ -108,12 +109,13 @@ def _find_elecs_roi_parallel(params):
         nei_dimensions, strech_to_dist, enlarge_if_no_hit, bipolar_electrodes, N = params
     for elc_num, (elec_pos, elec_name, elc_ori, elc_dist, elc_type) in elecs_data_chunk:
         print('{}: {} / {}'.format(elec_name, elc_num, N))
-        regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length, elec_hemi_vertices, hemi = \
+        regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length, elec_hemi_vertices, \
+                elec_hemi_vertices_dists, hemi = \
             identify_roi_from_atlas_per_electrode(labels, elec_pos, pia_verts, len_lh_pia, lut,
                 aseg_data, elec_name, approx, elc_length, nei_dimensions, elc_ori, elc_dist, elc_type, strech_to_dist,
                 enlarge_if_no_hit, bipolar_electrodes, subjects_dir, subject, n_jobs=1)
         results.append((elec_name, regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length,
-                        elec_hemi_vertices, hemi))
+                        elec_hemi_vertices, elec_hemi_vertices_dists, hemi))
     return results
 
 
@@ -158,8 +160,6 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lu
         elc_length = 0
         elc_ori = None
 
-    # elc_line = get_elec_line(pos, elc_ori, elc_length)
-
     we_have_a_hit = False
     if strech_to_dist and bipolar_electrodes and elc_length < elc_dist:
         elc_length = elc_dist
@@ -176,9 +176,10 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lu
         elec_hemi_vertices_mask = hemi_verts_dists < approx
         hemi_vertices_indices = np.arange(len(pia_verts[hemi_str]))
         elec_hemi_vertices = hemi_vertices_indices[elec_hemi_vertices_mask]
+        elec_hemi_vertices_dists = hemi_verts_dists[elec_hemi_vertices_mask]
 
         # excludes=['white', 'WM', 'Unknown', 'White', 'unknown', 'Cerebral-Cortex']
-        excludes=['Unknown', 'unknown', 'Cerebral-Cortex', 'corpuscallosum']
+        excludes=['Unknown', 'unknown', 'Cerebral-Cortex', 'corpuscallosum', 'WM-hypointensities']
         compiled_excludes = re.compile('|'.join(excludes))
         _region_is_excluded = partial(region_is_excluded, compiled_excludes=compiled_excludes)
 
@@ -212,7 +213,7 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lu
             print('No hit! Recalculate with a bigger cigar')
 
     return regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length,\
-           elec_hemi_vertices, hemi_str
+           elec_hemi_vertices, elec_hemi_vertices_dists, hemi_str
 
 
 def get_elec_line(elec_pos, elec_ori, elec_length, points_number=100):
