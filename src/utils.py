@@ -1,10 +1,12 @@
 import os
+import os.path as op
 import shutil
 import numpy as np
 import multiprocessing
 import traceback
 from functools import partial
 import subprocess
+import re
 try:
     import cPickle as pickle
 except:
@@ -261,3 +263,86 @@ def run_script(cmd, verbose=False):
     print(output)
     return output
 
+
+def import_freesurfer_lut(subjects_dir='', fs_lut=''):
+    """
+    Import Look-up Table with colors and labels for anatomical regions.
+    It's necessary that Freesurfer is installed and that the environmental
+    variable 'FREESURFER_HOME' is present.
+
+    Parameters
+    ----------
+    subjects_dir : str
+        path to the subjects dir
+    fs_lut : str
+        path to file called FreeSurferColorLUT.txt
+
+    Returns
+    -------
+    idx : list of int
+        indices of regions
+    label : list of str
+        names of the brain regions
+    rgba : numpy.ndarray
+        one row is a brain region and the columns are the RGBA colors
+    """
+    if fs_lut == '':
+        try:
+            fs_home = os.environ['FREESURFER_HOME']
+        except KeyError:
+            raise OSError('FREESURFER_HOME not found')
+        else:
+            if fs_home != '':
+                fs_lut = op.join(fs_home, 'FreeSurferColorLUT.txt')
+            else:
+                fs_lut = op.join(subjects_dir, 'FreeSurferColorLUT.txt')
+
+    idx = np.genfromtxt(fs_lut, dtype=None, usecols=(0))
+    label = fix_bin_str_in_arr(np.genfromtxt(fs_lut, dtype=None, usecols=(1)))
+    rgba = np.genfromtxt(fs_lut, dtype=None, usecols=(2, 3, 4, 5))
+    lut = {'index':idx, 'label':label, 'RGBA':rgba}
+    return lut
+
+
+def region_is_excluded(region, compiled_excludes):
+    if isinstance(region, np.bytes_):
+        region = region.astype(str)
+    return not compiled_excludes.search(region) is None
+
+
+def get_subcortical_regions(excludes=[], output_fname=''):
+    regions = []
+    excludes.extend(['ctx', 'Line', 'CSF', 'Lesion', 'undetermined', 'vessel', 'F3orb', 'aOg', 'lOg', 'mOg', 'pOg',
+                    'Porg', 'Aorg', 'F1', 'Chiasm', 'Corpus_Callosum', 'WM', 'wm', 'Dura', 'Brain-Stem', 'abnormality',
+                     'Epidermis', 'Tissue', 'Muscle', 'Cranium', 'Ear', 'Adipose', 'Spinal', 'Nerve', 'Bone',
+                     'Air', 'Fat', 'Tongue','Nasal', 'Globe', 'Teeth', 'Cbm', 'lh.', 'rh.', 'IliacA', 'SacralA',
+                     'ObturatorA', 'PudendalA', 'UmbilicalA', 'RectalA', 'IliacV', 'ObturatorV', 'PudendalV',
+                     'Lymph', 'AIPS', 'IPL', 'Visual', 'right_', 'left_', 'Brainstem', 'CST',
+                     'LongFas', 'Bundle', 'Gyrus', 'Tract', 'Cornea', 'Diploe', 'Humor', 'Lens', 'Table',
+                     'Periosteum', 'Endosteum', 'R-C-S', 'Iris', 'IntCapsule', 'Interior', 'Skull',
+                     'fossa', 'Scalp', 'Hematoma', 'brainstem', 'DCG', 'SCP', 'Floculus', 'CblumNodulus',
+                     'pathway', 'GC-DG', 'HATA', 'fimbria', 'ventricle', 'molecular', 'Cerebral_Cortex', 'Background',
+                     'Voxel-Unchanged', 'Head', 'Fluid', 'Sinus', 'Eustachian', 'V1', 'V2', 'BA', 'Aorta',
+                     'MT', 'Tumor', 'GrayMatter', 'SUSPICIOUS', 'fmajor', 'fminor', 'CC', 'LAntThalRadiation',
+                     'LUncinateFas', 'RAntThalRadiation', 'RUncinateFas', 'Vent', 'SLF', 'Cerebral-Exterior'])
+    lut = import_freesurfer_lut()
+    compiled_excludes = re.compile('|'.join(excludes))
+    _region_is_excluded = partial(region_is_excluded, compiled_excludes=compiled_excludes)
+    for region in lut['label']:
+        if not _region_is_excluded(region):
+            regions.append(region)
+    if output_fname != '':
+        output_file = open(output_fname, 'w')
+        for region in regions:
+            output_file.write('{}\n'.format(region))
+    return regions
+
+
+def get_parent_fol(curr_dir=''):
+    if curr_dir == '':
+        curr_dir = os.path.dirname(os.path.realpath(__file__))
+    return os.path.split(curr_dir)[0]
+
+
+def get_resources_fol():
+    return op.join(get_parent_fol(), 'resources')

@@ -26,7 +26,7 @@ EXISTING_FREESURFER_ANNOTATIONS = ['aparc.DKTatlas40.annot', 'aparc.annot', 'apa
 
 def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elecs_ori=None, approx=4, elc_length=1,
                             elecs_dists=None, elecs_types=None, strech_to_dist=False, enlarge_if_no_hit=False,
-                            bipolar_electrodes=False, subjects_dir=None, subject=None, n_jobs=6,
+                            bipolar_electrodes=False, subjects_dir=None, subject=None, excludes=None, n_jobs=6,
                             nei_dimensions=None, aseg_atlas=True):
 
     if subjects_dir is None or subjects_dir == '':
@@ -61,7 +61,7 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elecs_ori=None, appr
             logging.error('!!!!! No subcortical labels !!!!!')
             aseg_data = None
 
-    lut = import_freesurfer_lut(subjects_dir, lut_fname)
+    lut = utils.import_freesurfer_lut(subjects_dir, lut_fname)
 
     # load the surfaces and annotation
     # uses the pial surface, this change is pushed to MNE python
@@ -84,8 +84,9 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elecs_ori=None, appr
         #           enumerate(zip(elecs_pos, elecs_names, elcs_ori, elecs_dists, elecs_types))]
     N = len(elecs_data)
     elecs_data_chunks = utils.chunks(elecs_data, len(elecs_data) / n_jobs)
-    params = [(elecs_data_chunk, subject, subjects_dir, labels, aseg_data, lut, pia_verts, len_lh_pia, approx, elc_length, nei_dimensions,
-               strech_to_dist, enlarge_if_no_hit, bipolar_electrodes, N) for elecs_data_chunk in elecs_data_chunks]
+    params = [(elecs_data_chunk, subject, subjects_dir, labels, aseg_data, lut, pia_verts, len_lh_pia, approx,
+               elc_length, nei_dimensions, strech_to_dist, enlarge_if_no_hit, bipolar_electrodes, excludes, N) for
+              elecs_data_chunk in elecs_data_chunks]
     print('run with {} jobs'.format(n_jobs))
     results = utils.run_parallel(_find_elecs_roi_parallel, params, n_jobs)
     for results_chunk in results:
@@ -106,22 +107,22 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elecs_ori=None, appr
 def _find_elecs_roi_parallel(params):
     results = []
     elecs_data_chunk, subject, subjects_dir, labels, aseg_data, lut, pia_verts, len_lh_pia, approx, elc_length,\
-        nei_dimensions, strech_to_dist, enlarge_if_no_hit, bipolar_electrodes, N = params
+        nei_dimensions, strech_to_dist, enlarge_if_no_hit, bipolar_electrodes, excludes, N = params
     for elc_num, (elec_pos, elec_name, elc_ori, elc_dist, elc_type) in elecs_data_chunk:
         print('{}: {} / {}'.format(elec_name, elc_num, N))
         regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length, elec_hemi_vertices, \
                 elec_hemi_vertices_dists, hemi = \
             identify_roi_from_atlas_per_electrode(labels, elec_pos, pia_verts, len_lh_pia, lut,
                 aseg_data, elec_name, approx, elc_length, nei_dimensions, elc_ori, elc_dist, elc_type, strech_to_dist,
-                enlarge_if_no_hit, bipolar_electrodes, subjects_dir, subject, n_jobs=1)
+                enlarge_if_no_hit, bipolar_electrodes, subjects_dir, subject, excludes, n_jobs=1)
         results.append((elec_name, regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length,
                         elec_hemi_vertices, elec_hemi_vertices_dists, hemi))
     return results
 
 
 def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lut, aseg_data, elc_name,
-      approx=4, elc_length=1, nei_dimensions=None, elc_ori=None, elc_dist=0, elc_type=DEPTH, strech_to_dist=False,
-      enlarge_if_no_hit=False, bipolar_electrodes=False, subjects_dir=None, subject=None, n_jobs=1):
+    approx=4, elc_length=1, nei_dimensions=None, elc_ori=None, elc_dist=0, elc_type=DEPTH, strech_to_dist=False,
+    enlarge_if_no_hit=False, bipolar_electrodes=False, subjects_dir=None, subject=None, excludes=None, n_jobs=1):
     '''
     Find the surface labels contacted by an electrode at this position
     in RAS space.
@@ -137,6 +138,9 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lu
         The string containing the name of the surface parcellation,
         does not apply to subcortical structures. If None, aparc is used.
     '''
+
+    if excludes is None:
+        excludes = ['Unknown', 'unknown', 'Cerebral-Cortex', 'corpuscallosum', 'WM-hypointensities']
 
     # find closest vertex
     pia = np.vstack((pia_verts['lh'], pia_verts['rh']))
@@ -179,9 +183,8 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lu
         elec_hemi_vertices_dists = hemi_verts_dists[elec_hemi_vertices_mask]
 
         # excludes=['white', 'WM', 'Unknown', 'White', 'unknown', 'Cerebral-Cortex']
-        excludes=['Unknown', 'unknown', 'Cerebral-Cortex', 'corpuscallosum', 'WM-hypointensities']
         compiled_excludes = re.compile('|'.join(excludes))
-        _region_is_excluded = partial(region_is_excluded, compiled_excludes=compiled_excludes)
+        _region_is_excluded = partial(utils.region_is_excluded, compiled_excludes=compiled_excludes)
 
         regions, regions_hits = [], []
         # parcels_files = glob.glob(op.join(subjects_dir, subject, 'label', atlas, '*.label'))
@@ -332,7 +335,7 @@ def identify_roi_from_aparc(pos, elc_line, elc_length, lut, aseg_data, approx=4,
 
     def find_neighboring_regions(pos, elc_length, elc_line, aseg_data, lut, approx, dimensions, excludes):
         compiled_excludes = re.compile('|'.join(excludes))
-        _region_is_excluded = partial(region_is_excluded, compiled_excludes=compiled_excludes)
+        _region_is_excluded = partial(utils.region_is_excluded, compiled_excludes=compiled_excludes)
         neighb = calc_neighbors(pos, elc_length + approx, dimensions)
         dists = np.min(cdist(elc_line, neighb), 0)
         neighb = neighb[np.where(dists<approx)]
@@ -382,55 +385,11 @@ def identify_roi_from_aparc(pos, elc_line, elc_length, lut, aseg_data, approx=4,
     return find_neighboring_regions(ras_pos, elc_length, ras_elc_line, aseg_data, lut, approx, nei_dimensions, excludes)
 
 
-def import_freesurfer_lut(subjects_dir, fs_lut=''):
-    """
-    Import Look-up Table with colors and labels for anatomical regions.
-    It's necessary that Freesurfer is installed and that the environmental
-    variable 'FREESURFER_HOME' is present.
-
-    Parameters
-    ----------
-    fs_lut : str
-        path to file called FreeSurferColorLUT.txt
-
-    Returns
-    -------
-    idx : list of int
-        indices of regions
-    label : list of str
-        names of the brain regions
-    rgba : numpy.ndarray
-        one row is a brain region and the columns are the RGBA colors
-    """
-    if fs_lut == '':
-        try:
-            fs_home = os.environ['FREESURFER_HOME']
-        except KeyError:
-            raise OSError('FREESURFER_HOME not found')
-        else:
-            if fs_home != '':
-                fs_lut = op.join(fs_home, 'FreeSurferColorLUT.txt')
-            else:
-                fs_lut = op.join(subjects_dir, 'FreeSurferColorLUT.txt')
-
-    idx = np.genfromtxt(fs_lut, dtype=None, usecols=(0))
-    label = utils.fix_bin_str_in_arr(np.genfromtxt(fs_lut, dtype=None, usecols=(1)))
-    rgba = np.genfromtxt(fs_lut, dtype=None, usecols=(2, 3, 4, 5))
-    lut = {'index':idx, 'label':label, 'RGBA':rgba}
-    return lut
-
-
 def exclude_regions(regions, excludes):
     if (excludes):
         excluded = compile('|'.join(excludes))
         regions = [x for x in regions if not excluded.search(x)]
     return regions
-
-
-def region_is_excluded(region, compiled_excludes):
-    if isinstance(region, np.bytes_):
-        region = region.astype(str)
-    return not compiled_excludes.search(region) is None
 
 
 def calc_neighbors(pos, approx=None, dimensions=None, calc_bins=False):
@@ -585,14 +544,22 @@ def get_electrodes_dir():
     return elec_dir
 
 
-def write_results_to_csv(results, results_fname_csv, write_only_cortical=False, write_only_subcortical=False):
-    cortical_rois, subcortical_rois = [], []
-    for elecs in results.values():
-        for elc in elecs:
-            cortical_rois.extend(elc['cortical_rois'])
-            subcortical_rois.extend(elc['subcortical_rois'])
-    cortical_rois = list(np.unique(cortical_rois))
-    subcortical_rois = list(np.unique(subcortical_rois))
+def write_results_to_csv(results, results_fname_csv, args):
+    if args.write_all_labels:
+        utils.make_dir(utils.get_resources_fol())
+        cortical_rois = lu.read_labels(args.subject[0], args.subjects_dir, args.atlas, only_names=True,
+            output_fname=op.join(utils.get_resources_fol(), '{}_corticals.txt'.format(args.atlas)), n_jobs=args.n_jobs)
+        subcortical_rois = utils.get_subcortical_regions(args.excludes,
+            output_fname=op.join(utils.get_resources_fol(), 'subcorticals.txt'))
+        subcortical_rois.extend(['Left-Cerebral-White-Matter', 'Right-Cerebral-White-Matter'])
+    else:
+        cortical_rois, subcortical_rois = [], []
+        for elecs in results.values():
+            for elc in elecs:
+                cortical_rois.extend(elc['cortical_rois'])
+                subcortical_rois.extend(elc['subcortical_rois'])
+        cortical_rois = list(np.unique(cortical_rois))
+        subcortical_rois = list(np.unique(subcortical_rois))
 
     for subject, elecs in results.items():
         write_values(elecs, results_fname_csv,
@@ -600,11 +567,11 @@ def write_results_to_csv(results, results_fname_csv, write_only_cortical=False, 
             [cortical_rois, subcortical_rois],
             ['cortical_rois','subcortical_rois'], ['cortical_probs', 'subcortical_probs'])
 
-        if write_only_cortical:
+        if args.write_only_cortical:
             write_values(elecs, results_fname_csv.replace('electrodes', 'cortical_electrodes'),
                 ['electrode'] + cortical_rois, [cortical_rois],['cortical_rois'], ['cortical_probs'])
 
-        if write_only_subcortical:
+        if args.write_only_subcortical:
             write_values(elecs, results_fname_csv.replace('electrodes', 'subcortical_electrodes'),
                 ['electrode']  + subcortical_rois, [subcortical_rois],
                 ['subcortical_rois'], ['subcortical_probs'])
@@ -787,7 +754,7 @@ def _morph_labels_parallel(params_chunks):
 
 # def get_all_labels_and_segmentations(subject, atlas):
 #     percs, segs = [], []
-#     all_segs = import_freesurfer_lut()['label']
+#     all_segs = utils.import_freesurfer_lut()['label']
 #     excludes=['Unknown', 'unknown', 'Cerebral-Cortex', 'ctx']
 #     compiled_excludes = re.compile('|'.join(excludes))
 #     _region_is_excluded = partial(region_is_excluded, compiled_excludes=compiled_excludes)
@@ -925,7 +892,7 @@ def run_for_all_subjects(subjects, atlas, subjects_dir, bipolar_electrodes, necc
                     elecs = identify_roi_from_atlas(
                         labels, elecs_names, elecs_pos, elcs_ori, args.error_radius, args.elc_length,
                         elecs_dists, elecs_types, args.strech_to_dist, args.enlarge_if_no_hit,
-                        bipolar_electrodes, subjects_dir, subject, args.n_jobs)
+                        bipolar_electrodes, subjects_dir, subject, args.excludes, args.n_jobs)
                     utils.save(elecs, results_fname_pkl)
                 if au.should_run('add_colors_to_probs', args):
                     add_colors_to_probs(subject, atlas, results_fname_pkl)
@@ -937,8 +904,7 @@ def run_for_all_subjects(subjects, atlas, subjects_dir, bipolar_electrodes, necc
                 print(traceback.format_exc())
 
     # Write the results for all the subjects at once, to have a common labeling
-    write_results_to_csv(results, results_fname_csv, write_only_cortical=args.write_only_cortical,
-                         write_only_subcortical=args.write_only_subcortical)
+    write_results_to_csv(results, results_fname_csv, args)
 
     if ok_subjects:
         print('ok subjects:')
@@ -1003,23 +969,30 @@ if __name__ == '__main__':
     parser.add_argument('--elc_length', help='elc length', required=False, default=4)
     parser.add_argument('--n_jobs', help='cpu num', required=False, default=-1)
     parser.add_argument('--template_brain', help='template brain', required=False, default='fsaverage5c')
-    parser.add_argument('--strech_to_dist', help='strech_to_dist', required=False, default=1, type=bool)
-    parser.add_argument('--enlarge_if_no_hit', help='enlarge_if_no_hit', required=False, default=1, type=bool)
-    parser.add_argument('--only_check_files', help='only_check_files', required=False, default=0, type=bool)
-    parser.add_argument('--overwrite', help='overwrite', required=False, default=1, type=bool)
-    parser.add_argument('--overwrite_annotation', help='overwrite_annotation', required=False, default=0, type=bool)
-    parser.add_argument('--overwrite_labels', help='overwrite_labels', required=False, default=0, type=bool)
-    parser.add_argument('--write_only_cortical', help='write_only_cortical', required=False, default=0, type=bool)
-    parser.add_argument('--write_only_subcortical', help='write_only_subcortical', required=False, default=0, type=bool)
-    parser.add_argument('--overwrite_labels_pkl', help='overwrite_labels_pkl', required=False, default=1, type=bool)
-    parser.add_argument('--overwrite_csv', help='overwrite_csv', required=False, default=1, type=bool)
-    parser.add_argument('--read_labels_from_annotation', help='read_labels_from_annotation', required=False, default=1, type=bool)
-    parser.add_argument('--solve_labels_collisions', help='solve_labels_collisions', required=False, default=0, type=bool)
+    parser.add_argument('--strech_to_dist', help='strech_to_dist', required=False, default=1, type=au.is_true)
+    parser.add_argument('--enlarge_if_no_hit', help='enlarge_if_no_hit', required=False, default=1, type=au.is_true)
+    parser.add_argument('--only_check_files', help='only_check_files', required=False, default=0, type=au.is_true)
+    parser.add_argument('--overwrite', help='overwrite', required=False, default=1, type=au.is_true)
+    parser.add_argument('--overwrite_annotation', help='overwrite_annotation', required=False, default=0, type=au.is_true)
+    parser.add_argument('--overwrite_labels', help='overwrite_labels', required=False, default=0, type=au.is_true)
+    parser.add_argument('--write_only_cortical', help='write_only_cortical', required=False, default=0, type=au.is_true)
+    parser.add_argument('--write_only_subcortical', help='write_only_subcortical', required=False, default=0, type=au.is_true)
+    parser.add_argument('--write_all_labels', help='Write all the labels', required=False, default=1, type=au.is_true)
+    parser.add_argument('--overwrite_labels_pkl', help='overwrite_labels_pkl', required=False, default=1, type=au.is_true)
+    parser.add_argument('--overwrite_csv', help='overwrite_csv', required=False, default=1, type=au.is_true)
+    parser.add_argument('--read_labels_from_annotation', help='read_labels_from_annotation', required=False, default=1, type=au.is_true)
+    parser.add_argument('--solve_labels_collisions', help='solve_labels_collisions', required=False, default=0, type=au.is_true)
     parser.add_argument('--remote_subject_dir_template', help='remote_subject_dir_template', required=False)
     parser.add_argument('--pos_fname', help='electrodes positions fname', required=False, default='')
     parser.add_argument('--output_postfix', help='output_postfix', required=False, default='')
+    parser.add_argument('--excludes', help='excluded labels', required=False, default='')
+
     args = utils.Bag(au.parse_parser(parser))
     args.n_jobs = utils.get_n_jobs(args.n_jobs)
+    args.subjects_dir = subjects_dir
+    if args.excludes == '':
+        args.excludes = ['Unknown', 'unknown', 'Cerebral-Cortex', 'corpuscallosum', 'WM-hypointensities',
+                         'White', 'white', 'Ventricle']
     print(args)
 
     subjects, atlas = args['subject'], args['atlas'] # 'arc_april2016' # 'aparc.DKTatlas40' # 'laus250'
