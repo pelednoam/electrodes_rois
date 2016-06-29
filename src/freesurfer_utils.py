@@ -111,9 +111,9 @@ def get_subcortical_regions(excludes=[], output_fname='', input_fname='', extra=
          'LUncinateFas', 'RAntThalRadiation', 'RUncinateFas', 'Vent', 'SLF', 'Cerebral-Exterior'])
     lut = import_freesurfer_lut()
     compiled_excludes = re.compile('|'.join(excludes))
-    _region_is_excluded = partial(region_is_excluded, compiled_excludes=compiled_excludes)
+    _region_are_excluded = partial(region_are_excluded, compiled_excludes=compiled_excludes)
     for region in lut['label']:
-        if not _region_is_excluded(region):
+        if not _region_are_excluded(region):
             regions.append(region)
             header.append(fix_region_name(region))
     for region in extra:
@@ -162,7 +162,7 @@ def fix_region_name(region):
     return region
 
 
-def region_is_excluded(region, compiled_excludes):
+def region_are_excluded(region, compiled_excludes):
     if isinstance(region, np.bytes_):
         region = region.astype(str)
     return not compiled_excludes.search(region) is None

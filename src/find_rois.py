@@ -63,7 +63,7 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elecs_ori=None, appr
             logging.error('!!!!! No subcortical labels !!!!!')
             aseg_data = None
 
-    lut = utils.import_freesurfer_lut(subjects_dir, lut_fname)
+    lut = fu.import_freesurfer_lut(subjects_dir, lut_fname)
 
     # load the surfaces and annotation
     # uses the pial surface, this change is pushed to MNE python
@@ -186,17 +186,17 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lu
 
         # excludes=['white', 'WM', 'Unknown', 'White', 'unknown', 'Cerebral-Cortex']
         compiled_excludes = re.compile('|'.join(excludes))
-        _region_is_excluded = partial(utils.region_is_excluded, compiled_excludes=compiled_excludes)
+        _region_are_excluded = partial(fu.region_are_excluded, compiled_excludes=compiled_excludes)
 
         regions, regions_hits = [], []
         # parcels_files = glob.glob(op.join(subjects_dir, subject, 'label', atlas, '*.label'))
 
         # files_chunks = utils.chunks(parcels_files, len(parcels_files) / n_jobs)
-        # params = [(files_chunk, hemi_str, verts, elc_line, bins, approx, _region_is_excluded) for files_chunk in files_chunks]
+        # params = [(files_chunk, hemi_str, verts, elc_line, bins, approx, _region_are_excluded) for files_chunk in files_chunks]
         # results = utils.run_parallel(_calc_hits_parallel, params, n_jobs)
         # for chunk in results:
         #     for parcel_name, hits in chunk:
-        results = calc_hits(labels, hemi_str, verts, elc_line, bins, approx, _region_is_excluded)
+        results = calc_hits(labels, hemi_str, verts, elc_line, bins, approx, _region_are_excluded)
         for parcel_name, hits in results:
             if hits > 0:
                 regions.append(parcel_name)
@@ -229,7 +229,7 @@ def get_elec_line(elec_pos, elec_ori, elec_length, points_number=100):
     return elc_line
 
 
-def calc_hits(labels, hemi_str, surf_verts, elc_line, bins, approx, _region_is_excluded):
+def calc_hits(labels, hemi_str, surf_verts, elc_line, bins, approx, _region_are_excluded):
     res = []
     res.append(('', 0))
     for label in labels:
@@ -237,7 +237,7 @@ def calc_hits(labels, hemi_str, surf_verts, elc_line, bins, approx, _region_is_e
         # parcel = mne.read_label(parcel_file)
         if label.hemi != hemi_str:
             continue
-        elif _region_is_excluded(str(label.name)):
+        elif _region_are_excluded(str(label.name)):
             continue
         else:
             hits = calc_hits_in_neighbors_from_line(elc_line, surf_verts[label.vertices], bins, approx)
@@ -337,7 +337,7 @@ def identify_roi_from_aparc(pos, elc_line, elc_length, lut, aseg_data, approx=4,
 
     def find_neighboring_regions(pos, elc_length, elc_line, aseg_data, lut, approx, dimensions, excludes):
         compiled_excludes = re.compile('|'.join(excludes))
-        _region_is_excluded = partial(utils.region_is_excluded, compiled_excludes=compiled_excludes)
+        _region_are_excluded = partial(fu.region_are_excluded, compiled_excludes=compiled_excludes)
         neighb = calc_neighbors(pos, elc_length + approx, dimensions)
         dists = np.min(cdist(elc_line, neighb), 0)
         neighb = neighb[np.where(dists<approx)]
@@ -350,7 +350,7 @@ def identify_roi_from_aparc(pos, elc_line, elc_length, lut, aseg_data, approx=4,
                 d_type = aseg_data[cx, cy, cz]
                 label_index = np.where(lut['index'] == d_type)[0][0]
                 region = lut['label'][label_index]
-                if not _region_is_excluded(region):
+                if not _region_are_excluded(region):
                     nei_regions.add(region)
             for region in nei_regions:
                 regions.append(region)
@@ -759,9 +759,9 @@ def _morph_labels_parallel(params_chunks):
 #     all_segs = utils.import_freesurfer_lut()['label']
 #     excludes=['Unknown', 'unknown', 'Cerebral-Cortex', 'ctx']
 #     compiled_excludes = re.compile('|'.join(excludes))
-#     _region_is_excluded = partial(region_is_excluded, compiled_excludes=compiled_excludes)
+#     _region_are_excluded = partial(region_are_excluded, compiled_excludes=compiled_excludes)
 #     for seg in all_segs:
-#         if not _region_is_excluded(seg):
+#         if not _region_are_excluded(seg):
 #             segs.append(seg)
 #
 #     for hemi in ['rh', 'lh']:
