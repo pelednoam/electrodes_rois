@@ -546,7 +546,7 @@ def get_electrodes_dir():
     return elec_dir
 
 
-def write_results_to_csv(results, results_fname_csv, args):
+def write_results_to_csv(results, results_fname_csv, args, bipolar_electrodes):
     if args.write_all_labels:
         utils.make_dir(utils.get_resources_fol())
         cortical_rois = lu.read_labels(args.subject[0], args.subjects_dir, args.atlas, only_names=True,
@@ -562,30 +562,35 @@ def write_results_to_csv(results, results_fname_csv, args):
                 subcortical_rois.extend(elc['subcortical_rois'])
         cortical_rois = list(np.unique(cortical_rois))
         subcortical_rois = list(np.unique(subcortical_rois))
+        subcortical_rois_header = subcortical_rois
 
     for subject, elecs in results.items():
         write_values(elecs, results_fname_csv,
             ['electrode'] + cortical_rois + subcortical_rois_header + ['approx', 'elc_length'],
             [cortical_rois, subcortical_rois],
-            ['cortical_rois','subcortical_rois'], ['cortical_probs', 'subcortical_probs'])
+            ['cortical_rois','subcortical_rois'], ['cortical_probs', 'subcortical_probs'], bipolar_electrodes)
 
         if args.write_only_cortical:
             write_values(elecs, results_fname_csv.replace('electrodes', 'cortical_electrodes'),
-                ['electrode'] + cortical_rois, [cortical_rois],['cortical_rois'], ['cortical_probs'])
+                ['electrode'] + cortical_rois, [cortical_rois],['cortical_rois'], ['cortical_probs'], bipolar_electrodes)
 
         if args.write_only_subcortical:
             write_values(elecs, results_fname_csv.replace('electrodes', 'subcortical_electrodes'),
                 ['electrode']  + subcortical_rois_header, [subcortical_rois],
-                ['subcortical_rois'], ['subcortical_probs'])
+                ['subcortical_rois'], ['subcortical_probs'], bipolar_electrodes)
 
 
-def write_values(elecs, results_fname, header, rois_arr, rois_names, probs_names):
+def write_values(elecs, results_fname, header, rois_arr, rois_names, probs_names, bipolar_electrodes=False):
     with open(results_fname, 'w') as fp:
         writer = csv.writer(fp, delimiter=',')
         writer.writerow(header)
         print('Writing {} with header length of {}'.format(results_fname, len(header)))
         for elc in elecs:
-            values = [elc['name']]
+            elc_name = elc['name']
+            if bipolar_electrodes:
+                elc_group, elc_num1, elc_num2 = elec_group_number(elc_name, True)
+                elc_name = '{}{}{}'.format(elc_group, elc_num1, elc_num2)
+            values = [elc_name]
             for rois, rois_field, prob_field in zip(rois_arr, rois_names, probs_names):
                 for col, roi in enumerate(rois):
                     if roi in elc[rois_field]:
@@ -840,12 +845,19 @@ def copy_electrodes_file(subjects_dir, subject, elec_file):
 
 
 def rename_and_convert_electrodes_file(subject, subjects_dir):
+    subject_elec_fname_no_ras_pattern = op.join(subjects_dir, subject, 'electrodes', '{subject}.xlsx')
+    subject_elec_fname_no_ras = subject_elec_fname_no_ras_pattern.format(subject=subject)
+    subject_elec_fname_no_ras_upper = subject_elec_fname_no_ras_pattern.format(subject=subject.upper())
     subject_elec_fname_pattern = op.join(subjects_dir, subject, 'electrodes', '{subject}_RAS.{postfix}')
     subject_elec_fname_csv_upper = subject_elec_fname_pattern.format(subject=subject.upper(), postfix='csv')
     subject_elec_fname_csv = subject_elec_fname_pattern.format(subject=subject, postfix='csv')
     subject_elec_fname_xlsx_upper = subject_elec_fname_pattern.format(subject=subject.upper(), postfix='xlsx')
     subject_elec_fname_xlsx = subject_elec_fname_pattern.format(subject=subject, postfix='xlsx')
 
+    if op.isfile(subject_elec_fname_no_ras):
+        os.rename(subject_elec_fname_no_ras, subject_elec_fname_xlsx)
+    elif op.isfile(subject_elec_fname_no_ras_upper):
+        os.rename(subject_elec_fname_no_ras_upper, subject_elec_fname_xlsx)
     if op.isfile(subject_elec_fname_csv_upper):
         os.rename(subject_elec_fname_csv_upper, subject_elec_fname_csv)
     elif op.isfile(subject_elec_fname_xlsx_upper):
@@ -870,7 +882,7 @@ def run_for_all_subjects(subjects, atlas, subjects_dir, bipolar_electrodes, necc
     results = {}
     for subject in subjects:
         print('****************** {} ******************'.format(subject))
-        logging.info('****************** {} ******************'.format(subject))
+        logging.info('{} ****************** {} ******************'.format(utils.now(), subject))
         results_fname_csv = op.join(get_electrodes_dir(), '{}_{}_electrodes{}.csv'.format(
             subject, atlas, output_files_post_fix))
         results_fname_pkl = results_fname_csv.replace('csv', 'pkl')
@@ -906,7 +918,7 @@ def run_for_all_subjects(subjects, atlas, subjects_dir, bipolar_electrodes, necc
                 print(traceback.format_exc())
 
     # Write the results for all the subjects at once, to have a common labeling
-    write_results_to_csv(results, results_fname_csv, args)
+    write_results_to_csv(results, results_fname_csv, args, bipolar_electrodes)
 
     if ok_subjects:
         print('ok subjects:')
@@ -993,8 +1005,7 @@ if __name__ == '__main__':
     args.n_jobs = utils.get_n_jobs(args.n_jobs)
     args.subjects_dir = subjects_dir
     if args.excludes == '':
-        args.excludes = ['Unknown', 'unknown', 'Cerebral-Cortex', 'corpuscallosum', 'WM-hypointensities',
-                         'White', 'white', 'Ventricle']
+        args.excludes = ['Unknown', 'unknown', 'Cerebral-Cortex', 'corpuscallosum', 'WM-hypointensities', 'Ventricle']
     print(args)
 
     subjects, atlas = args['subject'], args['atlas'] # 'arc_april2016' # 'aparc.DKTatlas40' # 'laus250'

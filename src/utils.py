@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import traceback
 from functools import partial
+import time
 
 import numpy as np
 
@@ -101,7 +102,11 @@ def csv_from_excel(xlsx_fname, csv_fname):
     import csv
     try:
         wb = xlrd.open_workbook(xlsx_fname)
-        sh = wb.sheet_by_name('Sheet1')
+        # sh = wb.sheet_by_name('Sheet1')
+        if len(wb.sheets()) > 1:
+            raise Exception('More than one sheet in the xlsx file!')
+        sh = wb.sheets()[0]
+        print('Converting sheet "{}" to csv'.format(sh.name))
         csv_file = open(csv_fname, 'wb')
         wr = csv.writer(csv_file, quoting=csv.QUOTE_ALL)
 
@@ -302,3 +307,7 @@ def write_arr_to_file(arr, output_fname):
     with open(output_fname, 'w') as output_file:
         for x in arr:
             output_file.write('{}\n'.format(x))
+
+
+def now(time_format='%Y-%m-%d %H:%M:%S'):
+    return time.strftime(time_format)
