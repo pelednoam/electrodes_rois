@@ -1,23 +1,25 @@
-import numpy as np
-import os
-import os.path as op
-from functools import partial
-import re
-import nibabel as nib
-from collections import Counter, defaultdict
-from scipy.spatial.distance import cdist
-import mne
-from mne.surface import read_surface
-from itertools import product
 import csv
 import glob
-import traceback
-import shutil
 import logging
-from src import utils
-from src import labels_utils as lu
+import os
+import os.path as op
+import re
+import shutil
+import traceback
+from collections import Counter, defaultdict
+from functools import partial
+from itertools import product
+
+import mne
+import nibabel as nib
+import numpy as np
+from mne.surface import read_surface
+from scipy.spatial.distance import cdist
+
 from src import colors_utils as cu
 from src import freesurfer_utils as fu
+from src import labels_utils as lu
+from src import utils
 
 LINKS_DIR = utils.get_links_dir()
 DEPTH, GRID = range(2)
@@ -549,9 +551,9 @@ def write_results_to_csv(results, results_fname_csv, args):
         utils.make_dir(utils.get_resources_fol())
         cortical_rois = lu.read_labels(args.subject[0], args.subjects_dir, args.atlas, only_names=True,
             output_fname=op.join(utils.get_resources_fol(), '{}_corticals.txt'.format(args.atlas)), n_jobs=args.n_jobs)
-        subcortical_rois = utils.get_subcortical_regions(args.excludes,
-            output_fname=op.join(utils.get_resources_fol(), 'subcorticals.txt'))
-        subcortical_rois.extend(['Left-Cerebral-White-Matter', 'Right-Cerebral-White-Matter'])
+        input_fname = output_fname = op.join(utils.get_resources_fol(), 'subcorticals.txt')
+        subcortical_rois, subcortical_rois_header = fu.get_subcortical_regions(args.excludes, output_fname, input_fname,
+              ['Left-Cerebral-White-Matter', 'Right-Cerebral-White-Matter'])
     else:
         cortical_rois, subcortical_rois = [], []
         for elecs in results.values():
@@ -563,7 +565,7 @@ def write_results_to_csv(results, results_fname_csv, args):
 
     for subject, elecs in results.items():
         write_values(elecs, results_fname_csv,
-            ['electrode'] + cortical_rois + subcortical_rois + ['approx', 'elc_length'],
+            ['electrode'] + cortical_rois + subcortical_rois_header + ['approx', 'elc_length'],
             [cortical_rois, subcortical_rois],
             ['cortical_rois','subcortical_rois'], ['cortical_probs', 'subcortical_probs'])
 
@@ -573,7 +575,7 @@ def write_results_to_csv(results, results_fname_csv, args):
 
         if args.write_only_subcortical:
             write_values(elecs, results_fname_csv.replace('electrodes', 'subcortical_electrodes'),
-                ['electrode']  + subcortical_rois, [subcortical_rois],
+                ['electrode']  + subcortical_rois_header, [subcortical_rois],
                 ['subcortical_rois'], ['subcortical_probs'])
 
 
