@@ -506,7 +506,7 @@ def get_electrodes(subject, bipolar, elecs_dir='', delimiter=',', pos_fname=''):
         names = np.concatenate((names_depth, names_grid))
         # Put zeros as dists for the grid electrodes
         dists = np.concatenate((np.array(dists_depth), np.zeros((len(names_grid)))))
-        pos = np.vstack((np.array(pos_depth), pos_grid))
+        pos = utils.vstack(pos_depth, pos_grid)
         electrodes_types = [DEPTH] * len(names_depth) + [GRID] * len(names_grid)
     else:
         names, dists, pos = get_names_dists_non_bipolar_electrodes(data)
@@ -546,7 +546,7 @@ def get_electrodes_dir():
     return elec_dir
 
 
-def write_results_to_csv(results, results_fname_csv, args, bipolar_electrodes):
+def write_results_to_csv(results, results_fname_csv_temlate, args, bipolar_electrodes):
     if args.write_all_labels:
         utils.make_dir(utils.get_resources_fol())
         cortical_rois = lu.read_labels(args.subject[0], args.subjects_dir, args.atlas, only_names=True,
@@ -565,6 +565,7 @@ def write_results_to_csv(results, results_fname_csv, args, bipolar_electrodes):
         subcortical_rois_header = subcortical_rois
 
     for subject, elecs in results.items():
+        results_fname_csv = results_fname_csv_temlate.format(subject=subject)
         write_values(elecs, results_fname_csv,
             ['electrode'] + cortical_rois + subcortical_rois_header + ['approx', 'elc_length'],
             [cortical_rois, subcortical_rois],
@@ -581,25 +582,29 @@ def write_results_to_csv(results, results_fname_csv, args, bipolar_electrodes):
 
 
 def write_values(elecs, results_fname, header, rois_arr, rois_names, probs_names, bipolar_electrodes=False):
-    with open(results_fname, 'w') as fp:
-        writer = csv.writer(fp, delimiter=',')
-        writer.writerow(header)
-        print('Writing {} with header length of {}'.format(results_fname, len(header)))
-        for elc in elecs:
-            elc_name = elc['name']
-            if bipolar_electrodes:
-                elc_group, elc_num1, elc_num2 = elec_group_number(elc_name, True)
-                elc_name = '{}{}{}'.format(elc_group, elc_num1, elc_num2)
-            values = [elc_name]
-            for rois, rois_field, prob_field in zip(rois_arr, rois_names, probs_names):
-                for col, roi in enumerate(rois):
-                    if roi in elc[rois_field]:
-                        index = elc[rois_field].index(roi)
-                        values.append(str(elc[prob_field][index]))
-                    else:
-                        values.append(0.)
-            values.extend([elc['approx'], elc['elc_length']])
-            writer.writerow(values)
+    try:
+        with open(results_fname, 'w') as fp:
+            writer = csv.writer(fp, delimiter=',')
+            writer.writerow(header)
+            print('Writing {} with header length of {}'.format(results_fname, len(header)))
+            for elc in elecs:
+                elc_name = elc['name']
+                if bipolar_electrodes and '-' in elc_name:
+                    elc_group, elc_num1, elc_num2 = elec_group_number(elc_name, True)
+                    elc_name = '{}{}{}'.format(elc_group, elc_num1, elc_num2)
+                values = [elc_name]
+                for rois, rois_field, prob_field in zip(rois_arr, rois_names, probs_names):
+                    for col, roi in enumerate(rois):
+                        if roi in elc[rois_field]:
+                            index = elc[rois_field].index(roi)
+                            values.append(str(elc[prob_field][index]))
+                        else:
+                            values.append(0.)
+                values.extend([elc['approx'], elc['elc_length']])
+                writer.writerow(values)
+    except:
+        logging.error('write_values to {}: {}'.format(results_fname, traceback.format_exc()))
+        print(traceback.format_exc())
 
 
 # def add_labels_per_electrodes_probabilities(subject, elecs_dir='', post_fix=''):
@@ -739,45 +744,6 @@ def _morph_labels_parallel(params_chunks):
             sub_label.save(local_label_name)
 
 
-# def labels_to_annot(subject, subjects_dir='', aparc_name='aparc250', labels_fol='', overwrite=True):
-#     if subjects_dir=='':
-#         subjects_dir = os.environ['SUBJECTS_DIR']
-#     subject_dir = op.join(subjects_dir, subject)
-#     labels_fol = op.join(subject_dir, 'label', aparc_name) if labels_fol=='' else labels_fol
-#     labels = []
-#     for label_file in glob.glob(op.join(labels_fol, '*.label')):
-#         # print label_file
-#         try:
-#             label = mne.read_label(label_file)
-#             labels.append(label)
-#         except:
-#             print('error reading the label!')
-#             logging.error('labels_to_annot ({}): {}'.format(subject, traceback.format_exc()))
-#             print(traceback.format_exc())
-#
-#     mne.write_labels_to_annot(subject=subject, labels=labels, parc=aparc_name, overwrite=overwrite,
-#                               subjects_dir=subjects_dir, surface='pial')
-
-
-# def get_all_labels_and_segmentations(subject, atlas):
-#     percs, segs = [], []
-#     all_segs = utils.import_freesurfer_lut()['label']
-#     excludes=['Unknown', 'unknown', 'Cerebral-Cortex', 'ctx']
-#     compiled_excludes = re.compile('|'.join(excludes))
-#     _region_are_excluded = partial(region_are_excluded, compiled_excludes=compiled_excludes)
-#     for seg in all_segs:
-#         if not _region_are_excluded(seg):
-#             segs.append(seg)
-#
-#     for hemi in ['rh', 'lh']:
-#         annot_file = op.join(subjects_dir, subject, 'label', '{}.{}.annot'.format(hemi, atlas))
-#         labels = mne.read_labels_from_annot(subject, surf_name='pial', annot_fname=annot_file)
-#         for label in labels:
-#             percs.append(label.name)
-#
-#     return percs, segs
-
-
 def prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, local_subjects_dir, print_traceback=False):
     local_subject_dir = op.join(local_subjects_dir, subject)
     for fol, files in neccesary_files.items():
@@ -830,8 +796,8 @@ def check_for_necessary_files(subjects_dir, subject, neccesary_files, remote_sub
 def check_for_electrodes_coordinates_file(subject):
     elecs_dir = get_electrodes_dir()
     elec_file = op.join(elecs_dir, '{}.csv'.format(subject))
-    if not op.isfile(elec_file) or op.getsize(elec_file) == 0:
-        copy_electrodes_file(subjects_dir, subject, elec_file)
+    # if not op.isfile(elec_file) or op.getsize(elec_file) == 0:
+    copy_electrodes_file(subjects_dir, subject, elec_file)
 
 
 def copy_electrodes_file(subjects_dir, subject, elec_file):
@@ -839,41 +805,31 @@ def copy_electrodes_file(subjects_dir, subject, elec_file):
     if not op.isfile(subject_elec_fname) or op.getsize(subject_elec_fname) == 0:
        rename_and_convert_electrodes_file(subject, subjects_dir)
     if op.isfile(subject_elec_fname):
+        if op.isfile(elec_file):
+            os.remove(elec_file)
         shutil.copyfile(subject_elec_fname, elec_file)
     else:
         raise Exception('{}: Electrodes file does not exist! {}'.format(subject, subject_elec_fname))
 
 
 def rename_and_convert_electrodes_file(subject, subjects_dir):
-    subject_elec_fname_no_ras_pattern = op.join(subjects_dir, subject, 'electrodes', '{subject}.xlsx')
-    subject_elec_fname_no_ras = subject_elec_fname_no_ras_pattern.format(subject=subject)
-    subject_elec_fname_no_ras_upper = subject_elec_fname_no_ras_pattern.format(subject=subject.upper())
+    subject_elec_fname_no_ras_pattern = op.join(subjects_dir, subject, 'electrodes', '{subject}.{postfix}')
     subject_elec_fname_pattern = op.join(subjects_dir, subject, 'electrodes', '{subject}_RAS.{postfix}')
-    subject_elec_fname_csv_upper = subject_elec_fname_pattern.format(subject=subject.upper(), postfix='csv')
     subject_elec_fname_csv = subject_elec_fname_pattern.format(subject=subject, postfix='csv')
-    subject_elec_fname_xlsx_upper = subject_elec_fname_pattern.format(subject=subject.upper(), postfix='xlsx')
     subject_elec_fname_xlsx = subject_elec_fname_pattern.format(subject=subject, postfix='xlsx')
 
-    if op.isfile(subject_elec_fname_no_ras):
-        os.rename(subject_elec_fname_no_ras, subject_elec_fname_xlsx)
-    elif op.isfile(subject_elec_fname_no_ras_upper):
-        os.rename(subject_elec_fname_no_ras_upper, subject_elec_fname_xlsx)
-    if op.isfile(subject_elec_fname_csv_upper):
-        os.rename(subject_elec_fname_csv_upper, subject_elec_fname_csv)
-    elif op.isfile(subject_elec_fname_xlsx_upper):
-        os.rename(subject_elec_fname_xlsx_upper, subject_elec_fname_xlsx)
+    utils.rename_files([subject_elec_fname_no_ras_pattern.format(subject=subject, postfix='xlsx'),
+                        subject_elec_fname_no_ras_pattern.format(subject=subject.upper(), postfix='xlsx'),
+                        subject_elec_fname_no_ras_pattern.format(subject=subject, postfix='xls'),
+                        subject_elec_fname_no_ras_pattern.format(subject=subject.upper(), postfix='xls')],
+                       subject_elec_fname_pattern.format(subject=subject, postfix='xlsx'))
+    utils.rename_files([subject_elec_fname_pattern.format(subject=subject.upper(), postfix='csv')],
+                       subject_elec_fname_csv)
+    utils.rename_files([subject_elec_fname_pattern.format(subject=subject.upper(), postfix='xlsx')],
+                       subject_elec_fname_xlsx)
     if op.isfile(subject_elec_fname_xlsx) and \
                     (not op.isfile(subject_elec_fname_csv) or op.getsize(subject_elec_fname_csv) == 0):
         utils.csv_from_excel(subject_elec_fname_xlsx, subject_elec_fname_csv)
-
-
-# def find_electrodes_closets_label(subject, labels, bipolar_electrodes):
-#     elecs_names, elecs_pos, elecs_dists = get_electrodes(subject, bipolar_electrodes)
-#     pia_verts = {}
-#     for hemi in ['rh', 'lh']:
-#         pia_verts[hemi], _ = nib.freesurfer.read_geometry(
-#             op.join(subjects_dir, subject, 'surf', '{}.pial'.format(hemi)))
-#     pia = np.vstack((pia_verts['lh'], pia_verts['rh']))
 
 
 def run_for_all_subjects(subjects, atlas, subjects_dir, bipolar_electrodes, neccesary_files,
@@ -882,9 +838,10 @@ def run_for_all_subjects(subjects, atlas, subjects_dir, bipolar_electrodes, necc
     results = {}
     for subject in subjects:
         print('****************** {} ******************'.format(subject))
-        logging.info('{} ****************** {} ******************'.format(utils.now(), subject))
-        results_fname_csv = op.join(get_electrodes_dir(), '{}_{}_electrodes{}.csv'.format(
-            subject, atlas, output_files_post_fix))
+        logging.info('****************** {} bipolar {}, {}******************'.format(subject, bipolar_electrodes, utils.now()))
+        results_fname_csv_template = op.join(get_electrodes_dir(), '{}_{}_electrodes{}.csv'.format(
+            '{subject}', atlas, output_files_post_fix))
+        results_fname_csv = results_fname_csv_template.format(subject=subject)
         results_fname_pkl = results_fname_csv.replace('csv', 'pkl')
         if not op.isfile(results_fname_csv) or args.overwrite_csv:
             try:
@@ -918,7 +875,7 @@ def run_for_all_subjects(subjects, atlas, subjects_dir, bipolar_electrodes, necc
                 print(traceback.format_exc())
 
     # Write the results for all the subjects at once, to have a common labeling
-    write_results_to_csv(results, results_fname_csv, args, bipolar_electrodes)
+    write_results_to_csv(results, results_fname_csv_template, args, bipolar_electrodes)
 
     if ok_subjects:
         print('ok subjects:')

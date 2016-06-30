@@ -99,22 +99,19 @@ def get_subfolders(fol):
 
 def csv_from_excel(xlsx_fname, csv_fname):
     import xlrd
-    import csv
+    # import csv
+    wb = xlrd.open_workbook(xlsx_fname)
+    # sh = wb.sheet_by_name('Sheet1')
+    if len(wb.sheets()) > 1:
+        raise Exception('More than one sheet in the xlsx file!')
+    sh = wb.sheets()[0]
+    print('Converting sheet "{}" to csv'.format(sh.name))
     try:
-        wb = xlrd.open_workbook(xlsx_fname)
-        # sh = wb.sheet_by_name('Sheet1')
-        if len(wb.sheets()) > 1:
-            raise Exception('More than one sheet in the xlsx file!')
-        sh = wb.sheets()[0]
-        print('Converting sheet "{}" to csv'.format(sh.name))
-        csv_file = open(csv_fname, 'wb')
-        wr = csv.writer(csv_file, quoting=csv.QUOTE_ALL)
-
-        for rownum in range(sh.nrows):
-            # wr.writerow([str(val).encode('utf_8') for val in sh.row_values(rownum)])
-            csv_file.write(b','.join([str(val).encode('utf_8') for val in sh.row_values(rownum)]) + b'\n')
-
-        csv_file.close()
+        with open(csv_fname, 'wb') as csv_file:
+        # wr = csv.writer(csv_file, quoting=csv.QUOTE_ALL)
+            for rownum in range(sh.nrows):
+                # wr.writerow([str(val).encode('utf_8') for val in sh.row_values(rownum)])
+                csv_file.write(b','.join([str(val).encode('utf_8') for val in sh.row_values(rownum)]) + b'\n')
     except:
         print('Error converting excel to csv!')
         print(traceback.format_exc())
@@ -311,3 +308,23 @@ def write_arr_to_file(arr, output_fname):
 
 def now(time_format='%Y-%m-%d %H:%M:%S'):
     return time.strftime(time_format)
+
+
+def vstack(arr1, arr2):
+    arr1_np = np.array(arr1)
+    arr2_np = np.array(arr2)
+    if len(arr1) == 0 and len(arr2) == 0:
+        return np.array([])
+    elif len(arr1) == 0:
+        return arr2_np
+    elif len(arr2) == 0:
+        return arr1_np
+    else:
+        return np.vstack((arr1_np, arr2_np))
+
+
+def rename_files(source_fnames, dest_fname):
+    for source_fname in source_fnames:
+        if op.isfile(source_fname):
+            os.rename(source_fname, dest_fname)
+            break
