@@ -111,6 +111,8 @@ def _find_elecs_roi_parallel(params):
     elecs_data_chunk, subject, subjects_dir, labels, aseg_data, lut, pia_verts, len_lh_pia, approx, elc_length,\
         nei_dimensions, strech_to_dist, enlarge_if_no_hit, bipolar_electrodes, excludes, N = params
     for elc_num, (elec_pos, elec_name, elc_ori, elc_dist, elc_type) in elecs_data_chunk:
+        # if elec_name != 'GR12':
+        #     continue
         print('{}: {} / {}'.format(elec_name, elc_num, N))
         regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length, elec_hemi_vertices, \
                 elec_hemi_vertices_dists, hemi = \
@@ -208,13 +210,16 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lu
         else:
             subcortical_regions, subcortical_hits = [], []
 
-        we_have_a_hit = not electrode_is_only_in_white_matter(regions, subcortical_regions) or not enlarge_if_no_hit
+        if len(regions) == 0 and len(subcortical_regions) == 0:
+            we_have_a_hit = False
+        else:
+            we_have_a_hit = not electrode_is_only_in_white_matter(regions, subcortical_regions) or not enlarge_if_no_hit
         if not we_have_a_hit:
             approx += .5
             if elc_type == DEPTH:
                 elc_length += 1
             elif elc_type == GRID:
-                logging.warning('Grid electrode ({}) without a cortical hit?!?!'.format(elc_name))
+                logging.warning('Grid electrode ({}) without a cortical hit?!?! Trying a bigger cigar'.format(elc_name))
             print('No hit! Recalculate with a bigger cigar')
 
     return regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length,\
@@ -280,7 +285,7 @@ def _read_labels_vertices(files_chunk):
 
 
 def electrode_is_only_in_white_matter(regions, subcortical_regions):
-    return len(regions) == 0 and len(subcortical_regions)==1 and \
+    return len(regions) == 0 and len(subcortical_regions) == 1 and \
         subcortical_regions[0] in ['{}-Cerebral-White-Matter'.format(hemi) \
         for hemi in ['Right', 'Left']]
 
@@ -569,19 +574,20 @@ def write_results_to_csv(results, results_fname_csv_temlate, args, bipolar_elect
         write_values(elecs, results_fname_csv,
             ['electrode'] + cortical_rois + subcortical_rois_header + ['approx', 'elc_length'],
             [cortical_rois, subcortical_rois],
-            ['cortical_rois','subcortical_rois'], ['cortical_probs', 'subcortical_probs'], bipolar_electrodes)
+            ['cortical_rois','subcortical_rois'], ['cortical_probs', 'subcortical_probs'], args, bipolar_electrodes)
 
         if args.write_only_cortical:
             write_values(elecs, results_fname_csv.replace('electrodes', 'cortical_electrodes'),
-                ['electrode'] + cortical_rois, [cortical_rois],['cortical_rois'], ['cortical_probs'], bipolar_electrodes)
+                         ['electrode'] + cortical_rois, [cortical_rois],['cortical_rois'], ['cortical_probs'],
+                         args, bipolar_electrodes)
 
         if args.write_only_subcortical:
             write_values(elecs, results_fname_csv.replace('electrodes', 'subcortical_electrodes'),
                 ['electrode']  + subcortical_rois_header, [subcortical_rois],
-                ['subcortical_rois'], ['subcortical_probs'], bipolar_electrodes)
+                ['subcortical_rois'], ['subcortical_probs'], args, bipolar_electrodes)
 
 
-def write_values(elecs, results_fname, header, rois_arr, rois_names, probs_names, bipolar_electrodes=False):
+def write_values(elecs, results_fname, header, rois_arr, rois_names, probs_names, args, bipolar_electrodes=False):
     try:
         with open(results_fname, 'w') as fp:
             writer = csv.writer(fp, delimiter=',')
@@ -589,7 +595,7 @@ def write_values(elecs, results_fname, header, rois_arr, rois_names, probs_names
             print('Writing {} with header length of {}'.format(results_fname, len(header)))
             for elc in elecs:
                 elc_name = elc['name']
-                if bipolar_electrodes and '-' in elc_name:
+                if args.write_compact_bipolar and bipolar_electrodes and '-' in elc_name:
                     elc_group, elc_num1, elc_num2 = elec_group_number(elc_name, True)
                     elc_name = '{}{}{}'.format(elc_group, elc_num1, elc_num2)
                 values = [elc_name]
@@ -956,6 +962,7 @@ if __name__ == '__main__':
     parser.add_argument('--remote_subject_dir_template', help='remote_subject_dir_template', required=False)
     parser.add_argument('--pos_fname', help='electrodes positions fname', required=False, default='')
     parser.add_argument('--output_postfix', help='output_postfix', required=False, default='')
+    parser.add_argument('--write_compact_bipolar', help='write x23 instead x3-x2', required=False, default=0, type=au.is_true)
     parser.add_argument('--excludes', help='excluded labels', required=False, default='')
 
     args = utils.Bag(au.parse_parser(parser))
