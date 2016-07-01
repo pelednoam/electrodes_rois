@@ -1,4 +1,4 @@
-from surfer import Brain
+# from surfer import Brain
 import glob
 import os
 import shutil
@@ -74,16 +74,19 @@ def electrodes_npz_to_csv(npz_file, csv_file):
 
 
 def check_cigar(elc_length, r):
+    import itertools
     pos = np.array([21.5,   3.,   9.])
     next_pos = np.array([26.5,   3.,   9.])
     dist = np.linalg.norm(next_pos-pos)
     elc_ori = (next_pos-pos) / dist # norm(elc_ori)=1mm
     elc_line = np.array([pos + elc_ori*t for t in np.linspace(-elc_length/2.0, elc_length/2.0, 100)])
-    N = 1000000
-    points = np.zeros((N, 3))
-    points[:, 0] = np.random.uniform(0.0, 40.0, (N,))
-    points[:, 1] = np.random.uniform(-20.0, 20.0, (N,))
-    points[:, 2] = np.random.uniform(-20.0, 20.0, (N,))
+    points_axis = [np.arange(15, 35, 0.5), np.arange(-5, 13, 0.5), np.arange(0, 20, 0.5)]
+    points = np.array(list(itertools.product(*points_axis)))
+    # N = 1000000
+    # points = np.zeros((N, 3))
+    # points[:, 0] = np.random.uniform(0.0, 40.0, (N,))
+    # points[:, 1] = np.random.uniform(-20.0, 20.0, (N,))
+    # points[:, 2] = np.random.uniform(-20.0, 20.0, (N,))
     dists = np.min(cdist(elc_line, points), 0)
     inside = dists <= r
     outside = dists > r
@@ -94,6 +97,7 @@ def check_cigar(elc_length, r):
     ax.scatter(elc_line[:, 0], elc_line[:, 1], elc_line[:, 2], c='k')
     # ax.scatter(points[outside, 0], points[outside, 1], points[outside, 2], c='blue', edgecolors='none', alpha=0.1)
     ax.scatter(points[inside, 0], points[inside, 1], points[inside, 2], c='red', edgecolors='none', alpha=0.3)
+    plt.axis('off')
     plt.show()
 
 
@@ -110,7 +114,7 @@ if __name__ == '__main__':
     # copy_some_files()
     # electrodes_npz_to_csv('/homes/5/npeled/space3/subjects/mg79/electrodes/electrodes_positions.npz',
     #     '/homes/5/npeled/space3/subjects/mg79/electrodes/mg79_RAS.csv')
-    # check_cigar(4, 3)
+    check_cigar(4, 2)
     # copy_some_files2()
-    check_labels('mg96', 'rh', 'laus250')
+    # check_labels('mg96', 'rh', 'laus250')
     print('finish!')

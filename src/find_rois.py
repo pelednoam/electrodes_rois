@@ -81,9 +81,6 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elecs_ori=None, appr
         elecs_types = [DEPTH] * len (elecs_pos)
 
     elecs_data = list(enumerate(zip(elecs_pos, elecs_names, elecs_ori, elecs_dists, elecs_types)))
-        # [(elc_num, elec_pos, elec_name, elc_ori, elc_dist, elc_type) for
-        #           elc_num, (elec_pos, elec_name, elc_ori, elc_dist, elc_type) in
-        #           enumerate(zip(elecs_pos, elecs_names, elcs_ori, elecs_dists, elecs_types))]
     N = len(elecs_data)
     elecs_data_chunks = utils.chunks(elecs_data, len(elecs_data) / n_jobs)
     params = [(elecs_data_chunk, subject, subjects_dir, labels, aseg_data, lut, pia_verts, len_lh_pia, approx,
@@ -186,35 +183,14 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lu
         elec_hemi_vertices = hemi_vertices_indices[elec_hemi_vertices_mask]
         elec_hemi_vertices_dists = hemi_verts_dists[elec_hemi_vertices_mask]
 
-        # excludes=['white', 'WM', 'Unknown', 'White', 'unknown', 'Cerebral-Cortex']
         compiled_excludes = re.compile('|'.join(excludes))
         _region_are_excluded = partial(fu.region_are_excluded, compiled_excludes=compiled_excludes)
+        regions, regions_hits = calc_hits(labels, hemi_str, verts, elc_line, bins, approx, _region_are_excluded)
+        subcortical_regions, subcortical_hits = identify_roi_from_aparc(pos, elc_line, elc_length, lut, aseg_data,
+            approx=approx, nei_dimensions=nei_dimensions, subcortical_only=True, excludes=excludes)
 
-        regions, regions_hits = [], []
-        # parcels_files = glob.glob(op.join(subjects_dir, subject, 'label', atlas, '*.label'))
-
-        # files_chunks = utils.chunks(parcels_files, len(parcels_files) / n_jobs)
-        # params = [(files_chunk, hemi_str, verts, elc_line, bins, approx, _region_are_excluded) for files_chunk in files_chunks]
-        # results = utils.run_parallel(_calc_hits_parallel, params, n_jobs)
-        # for chunk in results:
-        #     for parcel_name, hits in chunk:
-        results = calc_hits(labels, hemi_str, verts, elc_line, bins, approx, _region_are_excluded)
-        for parcel_name, hits in results:
-            if hits > 0:
-                regions.append(parcel_name)
-                regions_hits.append(hits)
-
-        if aseg_data is not None:
-            subcortical_regions, subcortical_hits = identify_roi_from_aparc(pos, elc_line, elc_length, lut, aseg_data,
-                approx=approx, nei_dimensions=nei_dimensions, subcortical_only=True, excludes=excludes)
-        else:
-            subcortical_regions, subcortical_hits = [], []
-
-        if len(regions) == 0 and len(subcortical_regions) == 0:
-            we_have_a_hit = False
-        else:
-            we_have_a_hit = not electrode_is_only_in_white_matter(regions, subcortical_regions) or not enlarge_if_no_hit
-        if not we_have_a_hit:
+        we_have_a_hit = do_we_have_a_hit(regions, subcortical_regions)
+        if not we_have_a_hit and enlarge_if_no_hit:
             approx += .5
             if elc_type == DEPTH:
                 elc_length += 1
@@ -226,6 +202,14 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lu
            elec_hemi_vertices, elec_hemi_vertices_dists, hemi_str
 
 
+def do_we_have_a_hit(regions, subcortical_regions):
+    if len(regions) == 0 and len(subcortical_regions) == 0:
+        we_have_a_hit = False
+    else:
+        we_have_a_hit = not electrode_is_only_in_white_matter(regions, subcortical_regions)
+    return we_have_a_hit
+
+
 def get_elec_line(elec_pos, elec_ori, elec_length, points_number=100):
     if not elec_ori is None:
         elc_line = [elec_pos + elec_ori * t for t in np.linspace(-elec_length / 2.0, elec_length / 2.0, points_number)]
@@ -235,8 +219,8 @@ def get_elec_line(elec_pos, elec_ori, elec_length, points_number=100):
 
 
 def calc_hits(labels, hemi_str, surf_verts, elc_line, bins, approx, _region_are_excluded):
-    res = []
-    res.append(('', 0))
+    labels_with_hits, labels_hits = [], []
+    # res.append(('', 0))
     for label in labels:
         label = utils.Bag(label)
         # parcel = mne.read_label(parcel_file)
@@ -246,8 +230,12 @@ def calc_hits(labels, hemi_str, surf_verts, elc_line, bins, approx, _region_are_
             continue
         else:
             hits = calc_hits_in_neighbors_from_line(elc_line, surf_verts[label.vertices], bins, approx)
-        res.append((str(label.name), hits))
-    return res
+        if hits > 0:
+            labels_with_hits.append(str(label.name))
+            labels_hits.app(hits)
+        # res.append((str(label.name), hits))
+    # return res
+    return labels_with_hits, labels_hits
 
 
 def read_labels_vertices(subjects_dir, subject, atlas, read_labels_from_annotation=False, overwrite=False, n_jobs=1):
@@ -383,6 +371,9 @@ def identify_roi_from_aparc(pos, elc_line, elc_length, lut, aseg_data, approx=4,
         if round_coo:
             ras = [np.around(p) for p in ras]
         return ras
+
+    if aseg_data is None:
+        return [], []
 
     if subcortical_only:
         excludes.append('ctx')
@@ -963,13 +954,12 @@ if __name__ == '__main__':
     parser.add_argument('--pos_fname', help='electrodes positions fname', required=False, default='')
     parser.add_argument('--output_postfix', help='output_postfix', required=False, default='')
     parser.add_argument('--write_compact_bipolar', help='write x23 instead x3-x2', required=False, default=0, type=au.is_true)
-    parser.add_argument('--excludes', help='excluded labels', required=False, default='')
+    parser.add_argument('--excludes', help='excluded labels', required=False, type=au.str_arr_type,
+                        default='Unknown,unknown,Cerebral-Cortex,corpuscallosum,WM-hypointensities,Ventricle')
 
     args = utils.Bag(au.parse_parser(parser))
     args.n_jobs = utils.get_n_jobs(args.n_jobs)
     args.subjects_dir = subjects_dir
-    if args.excludes == '':
-        args.excludes = ['Unknown', 'unknown', 'Cerebral-Cortex', 'corpuscallosum', 'WM-hypointensities', 'Ventricle']
     print(args)
 
     subjects, atlas = args['subject'], args['atlas'] # 'arc_april2016' # 'aparc.DKTatlas40' # 'laus250'
