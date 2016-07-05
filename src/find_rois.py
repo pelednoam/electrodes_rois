@@ -741,30 +741,30 @@ def _morph_labels_parallel(params_chunks):
             sub_label.save(local_label_name)
 
 
-def prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, local_subjects_dir, print_traceback=False):
-    local_subject_dir = op.join(local_subjects_dir, subject)
-    for fol, files in neccesary_files.items():
-        if not op.isdir(op.join(local_subject_dir, fol)):
-            os.makedirs(op.join(local_subject_dir, fol))
-        for file_name in files:
-            try:
-                if not op.isfile(op.join(local_subject_dir, fol, file_name)):
-                    shutil.copyfile(op.join(remote_subject_dir, fol, file_name),
-                                op.join(local_subject_dir, fol, file_name))
-            except:
-                logging.error('{}: {}'.format(subject, traceback.format_exc()))
-                if print_traceback:
-                    print(traceback.format_exc())
-    all_files_exists = True
-    for fol, files in neccesary_files.items():
-        for file_name in files:
-            if not op.isfile(op.join(local_subject_dir, fol, file_name)):
-                logging.error("The file {} doesn't exist in the local subjects folder!!!".format(file_name))
-                all_files_exists = False
-    copy_electrodes_ras_file(subject, local_subject_dir, remote_subject_dir)
-    if not all_files_exists:
-        raise Exception('Not all files exist in the local subject folder!!!')
-        logging.error('{}: {}'.format(subject, 'Not all files exist in the local subject folder!!!'))
+# def prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, local_subjects_dir, print_traceback=False):
+#     local_subject_dir = op.join(local_subjects_dir, subject)
+#     for fol, files in neccesary_files.items():
+#         if not op.isdir(op.join(local_subject_dir, fol)):
+#             os.makedirs(op.join(local_subject_dir, fol))
+#         for file_name in files:
+#             try:
+#                 if not op.isfile(op.join(local_subject_dir, fol, file_name)):
+#                     shutil.copyfile(op.join(remote_subject_dir, fol, file_name),
+#                                 op.join(local_subject_dir, fol, file_name))
+#             except:
+#                 logging.error('{}: {}'.format(subject, traceback.format_exc()))
+#                 if print_traceback:
+#                     print(traceback.format_exc())
+#     all_files_exists = True
+#     for fol, files in neccesary_files.items():
+#         for file_name in files:
+#             if not op.isfile(op.join(local_subject_dir, fol, file_name)):
+#                 logging.error("The file {} doesn't exist in the local subjects folder!!!".format(file_name))
+#                 all_files_exists = False
+#     copy_electrodes_ras_file(subject, local_subject_dir, remote_subject_dir)
+#     if not all_files_exists:
+#         raise Exception('Not all files exist in the local subject folder!!!')
+#         logging.error('{}: {}'.format(subject, 'Not all files exist in the local subject folder!!!'))
 
 
 def copy_electrodes_ras_file(subject, local_subject_dir, remote_subject_dir):
@@ -784,10 +784,12 @@ def copy_electrodes_ras_file(subject, local_subject_dir, remote_subject_dir):
     #     logging.error("Can't find electrodes RAS coordinates! {}".format(local_ras_fname))
 
 
-def check_for_necessary_files(subjects_dir, subject, neccesary_files, remote_subject_dir_template):
+def check_for_necessary_files(subjects_dir, subject, neccesary_files, remote_subject_dir_template, args):
     remote_subject_dir = build_remote_subject_dir(remote_subject_dir_template, subject)
-    prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, subjects_dir,
-        print_traceback=True)
+    utils.prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, subjects_dir,
+        args, print_traceback=True)
+    # prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, subjects_dir,
+    #     print_traceback=True)
 
 
 def check_for_electrodes_coordinates_file(subject):
@@ -845,7 +847,7 @@ def run_for_all_subjects(subjects, atlas, subjects_dir, bipolar_electrodes, necc
                 if op.isfile(results_fname_pkl) and not args.overwrite:
                     elecs = utils.load(results_fname_pkl)
                 elif 'all' in args.function:
-                    check_for_necessary_files(subjects_dir, subject, neccesary_files, remote_subject_dir_template)
+                    check_for_necessary_files(subjects_dir, subject, neccesary_files, remote_subject_dir_template, args)
                     check_for_annot_file(subject, subjects_dir, atlas, args.template_brain, args.overwrite_labels,
                         args.overwrite_annotation, args.read_labels_from_annotation, args.solve_labels_collisions,
                         freesurfer_home, n_jobs=args.n_jobs)
@@ -956,6 +958,9 @@ if __name__ == '__main__':
     parser.add_argument('--write_compact_bipolar', help='write x23 instead x3-x2', required=False, default=0, type=au.is_true)
     parser.add_argument('--excludes', help='excluded labels', required=False, type=au.str_arr_type,
                         default='Unknown,unknown,Cerebral-Cortex,corpuscallosum,WM-hypointensities,Ventricle')
+    parser.add_argument('--sftp', help='copy subjects files over sftp', required=False, default=0, type=au.is_true)
+    parser.add_argument('--sftp_username', help='sftp username', required=False, default='')
+    parser.add_argument('--sftp_domain', help='sftp domain', required=False, default='')
 
     args = utils.Bag(au.parse_parser(parser))
     args.n_jobs = utils.get_n_jobs(args.n_jobs)
