@@ -232,7 +232,7 @@ def calc_hits(labels, hemi_str, surf_verts, elc_line, bins, approx, _region_are_
             hits = calc_hits_in_neighbors_from_line(elc_line, surf_verts[label.vertices], bins, approx)
         if hits > 0:
             labels_with_hits.append(str(label.name))
-            labels_hits.app(hits)
+            labels_hits.append(hits)
         # res.append((str(label.name), hits))
     # return res
     return labels_with_hits, labels_hits

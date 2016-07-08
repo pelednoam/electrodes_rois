@@ -60,3 +60,5 @@ supramarginal-lh
 supramarginal-rh
 transversetemporal-lh
 transversetemporal-rh
+unknown-lh
+unknown-rh
