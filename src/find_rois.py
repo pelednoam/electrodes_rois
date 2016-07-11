@@ -28,8 +28,8 @@ EXISTING_FREESURFER_ANNOTATIONS = ['aparc.DKTatlas40.annot', 'aparc.annot', 'apa
 
 def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elecs_ori=None, approx=4, elc_length=1,
                             elecs_dists=None, elecs_types=None, strech_to_dist=False, enlarge_if_no_hit=False,
-                            bipolar_electrodes=False, subjects_dir=None, subject=None, excludes=None, n_jobs=6,
-                            nei_dimensions=None, aseg_atlas=True):
+                            bipolar_electrodes=False, subjects_dir=None, subject=None, excludes=None,
+                            specific_elec='', nei_dimensions=None, aseg_atlas=True, n_jobs=6):
 
     if subjects_dir is None or subjects_dir == '':
         subjects_dir = os.environ['SUBJECTS_DIR']
@@ -84,8 +84,8 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elecs_ori=None, appr
     N = len(elecs_data)
     elecs_data_chunks = utils.chunks(elecs_data, len(elecs_data) / n_jobs)
     params = [(elecs_data_chunk, subject, subjects_dir, labels, aseg_data, lut, pia_verts, len_lh_pia, approx,
-               elc_length, nei_dimensions, strech_to_dist, enlarge_if_no_hit, bipolar_electrodes, excludes, N) for
-              elecs_data_chunk in elecs_data_chunks]
+               elc_length, nei_dimensions, strech_to_dist, enlarge_if_no_hit, bipolar_electrodes, excludes,
+               specific_elec, N) for elecs_data_chunk in elecs_data_chunks]
     print('run with {} jobs'.format(n_jobs))
     results = utils.run_parallel(_find_elecs_roi_parallel, params, n_jobs)
     for results_chunk in results:
@@ -106,10 +106,10 @@ def identify_roi_from_atlas(labels, elecs_names, elecs_pos, elecs_ori=None, appr
 def _find_elecs_roi_parallel(params):
     results = []
     elecs_data_chunk, subject, subjects_dir, labels, aseg_data, lut, pia_verts, len_lh_pia, approx, elc_length,\
-        nei_dimensions, strech_to_dist, enlarge_if_no_hit, bipolar_electrodes, excludes, N = params
+        nei_dimensions, strech_to_dist, enlarge_if_no_hit, bipolar_electrodes, excludes, specific_elec, N = params
     for elc_num, (elec_pos, elec_name, elc_ori, elc_dist, elc_type) in elecs_data_chunk:
-        # if elec_name != 'GR12':
-        #     continue
+        if specific_elec != '' and elec_name != specific_elec:
+            continue
         print('{}: {} / {}'.format(elec_name, elc_num, N))
         regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length, elec_hemi_vertices, \
                 elec_hemi_vertices_dists, hemi = \
@@ -862,7 +862,9 @@ def run_for_all_subjects(subjects, atlas, subjects_dir, bipolar_electrodes, necc
                     elecs = identify_roi_from_atlas(
                         labels, elecs_names, elecs_pos, elcs_ori, args.error_radius, args.elc_length,
                         elecs_dists, elecs_types, args.strech_to_dist, args.enlarge_if_no_hit,
-                        bipolar_electrodes, subjects_dir, subject, args.excludes, args.n_jobs)
+                        bipolar_electrodes, subjects_dir, subject, args.excludes, args.specific_elec, args.n_jobs)
+                    if args.specific_elec != '':
+                        continue
                     utils.save(elecs, results_fname_pkl)
                 if au.should_run('add_colors_to_probs', args):
                     add_colors_to_probs(subject, atlas, results_fname_pkl)
@@ -961,7 +963,8 @@ if __name__ == '__main__':
     parser.add_argument('--output_postfix', help='output_postfix', required=False, default='')
     parser.add_argument('--write_compact_bipolar', help='write x23 instead x3-x2', required=False, default=0, type=au.is_true)
     parser.add_argument('--excludes', help='excluded labels', required=False, type=au.str_arr_type,
-                        default='Unknown,unknown,Cerebral-Cortex,corpuscallosum,WM-hypointensities,Ventricle')
+                        default='Unknown,unknown,Cerebral-Cortex,corpuscallosum,WM-hypointensities,Ventricle,Inf-Lat-Vent,choroid-plexus')
+    parser.add_argument('--specific_elec', help='run on only one electrodes', required=False, default='')
     parser.add_argument('--sftp', help='copy subjects files over sftp', required=False, default=0, type=au.is_true)
     parser.add_argument('--sftp_username', help='sftp username', required=False, default='')
     parser.add_argument('--sftp_domain', help='sftp domain', required=False, default='')

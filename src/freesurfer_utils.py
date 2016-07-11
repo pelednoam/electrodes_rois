@@ -101,7 +101,7 @@ def get_subcortical_regions(excludes=[], output_fname='', input_fname='', extra=
          'Epidermis', 'Tissue', 'Muscle', 'Cranium', 'Ear', 'Adipose', 'Spinal', 'Nerve', 'Bone',
          'Air', 'Fat', 'Tongue','Nasal', 'Globe', 'Teeth', 'Cbm', 'lh.', 'rh.', 'IliacA', 'SacralA',
          'ObturatorA', 'PudendalA', 'UmbilicalA', 'RectalA', 'IliacV', 'ObturatorV', 'PudendalV',
-         'Lymph', 'AIPS', 'IPL', 'Visual', 'right_', 'left_', 'Brainstem', 'CST', 'AAA',
+         'Lymph', 'AIPS', 'IPL', 'Visual', 'right_', 'left_', 'Brainstem', 'CST', 'AAA', 'choroid-plexus',
          'LongFas', 'Bundle', 'Gyrus', 'Tract', 'Cornea', 'Diploe', 'Humor', 'Lens', 'Table',
          'Periosteum', 'Endosteum', 'R-C-S', 'Iris', 'IntCapsule', 'Interior', 'Skull', 'White', 'white',
          'fossa', 'Scalp', 'Hematoma', 'brainstem', 'DCG', 'SCP', 'Floculus', 'CblumNodulus',
