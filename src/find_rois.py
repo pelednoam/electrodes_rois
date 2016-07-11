@@ -868,6 +868,10 @@ def run_for_all_subjects(subjects, atlas, subjects_dir, bipolar_electrodes, necc
                     add_colors_to_probs(subject, atlas, results_fname_pkl)
                 results[subject] = elecs
                 ok_subjects.append(subject)
+                if op.isdir(args.mmvt_dir):
+                    utils.make_dir(op.join(args.mmvt_dir, subject, 'electrodes'))
+                    fname = os.path.basename(results_fname_pkl)
+                    shutil.copy(results_fname_pkl, op.join(args.mmvt_dir, subject, 'electrodes', fname))
             except:
                 bad_subjects.append(subject)
                 logging.error('{}: {}'.format(subject, traceback.format_exc()))
@@ -926,7 +930,7 @@ if __name__ == '__main__':
 
     subjects_dir = utils.get_link_dir(LINKS_DIR, 'subjects', 'SUBJECTS_DIR')
     freesurfer_home = utils.get_link_dir(LINKS_DIR, 'freesurfer', 'FREESURFER_HOME')
-    blender_dir = utils.get_link_dir(LINKS_DIR, 'mmvt')
+    mmvt_dir = utils.get_link_dir(LINKS_DIR, 'mmvt')
     os.environ['SUBJECTS_DIR'] = subjects_dir
     os.environ['FREESURFER_HOME'] = freesurfer_home
 
@@ -965,6 +969,7 @@ if __name__ == '__main__':
     args = utils.Bag(au.parse_parser(parser))
     args.n_jobs = utils.get_n_jobs(args.n_jobs)
     args.subjects_dir = subjects_dir
+    args.mmvt_dir = mmvt_dir
     print(args)
 
     subjects, atlas = args['subject'], args['atlas'] # 'arc_april2016' # 'aparc.DKTatlas40' # 'laus250'
