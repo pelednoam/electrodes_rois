@@ -1,11 +1,13 @@
-import mne.surface
-from scipy.spatial.distance import cdist
-import time
-import os.path as op
-import numpy as np
-import os
-import shutil
 import glob
+import os
+import os.path as op
+import shutil
+import time
+
+import mne.surface
+import numpy as np
+from scipy.spatial.distance import cdist
+
 from src import utils
 
 LINKS_DIR = utils.get_links_dir()
@@ -72,7 +74,7 @@ def backup_annotation_files(subject, subjects_dir, aparc_name, backup_str='backu
 
 
 def read_labels(subject, subjects_dir, atlas, try_first_from_annotation=True, only_names=False,
-                output_fname='', n_jobs=1):
+                output_fname='', remove_unknown=True, n_jobs=1):
     if try_first_from_annotation:
         try:
             labels = mne.read_labels_from_annot(subject, atlas)
@@ -80,6 +82,8 @@ def read_labels(subject, subjects_dir, atlas, try_first_from_annotation=True, on
             labels = read_labels_from_folder(subject, subjects_dir, atlas, n_jobs)
     else:
         labels = read_labels_from_folder(subject, subjects_dir, atlas, n_jobs)
+    if remove_unknown:
+        labels = [l for l in labels if 'unknown' not in l.name]
     if output_fname != '':
         output_file = open(output_fname, 'w')
         for label in labels:

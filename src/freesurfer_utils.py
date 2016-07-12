@@ -98,7 +98,7 @@ def get_subcortical_regions(excludes=[], output_fname='', input_fname='', extra=
     regions, header = [], []
     excludes.extend(['ctx', 'Line', 'CSF', 'Lesion', 'undetermined', 'vessel', 'F3orb', 'aOg', 'lOg', 'mOg', 'pOg',
          'Porg', 'Aorg', 'F1', 'Chiasm', 'Corpus_Callosum', 'WM', 'wm', 'Dura', 'Brain-Stem', 'abnormality',
-         'Epidermis', 'Tissue', 'Muscle', 'Cranium', 'Ear', 'Adipose', 'Spinal', 'Nerve', 'Bone',
+         'Epidermis', 'Tissue', 'Muscle', 'Cranium', 'Ear', 'Adipose', 'Spinal', 'Nerve', 'Bone', 'unknown',
          'Air', 'Fat', 'Tongue','Nasal', 'Globe', 'Teeth', 'Cbm', 'lh.', 'rh.', 'IliacA', 'SacralA',
          'ObturatorA', 'PudendalA', 'UmbilicalA', 'RectalA', 'IliacV', 'ObturatorV', 'PudendalV',
          'Lymph', 'AIPS', 'IPL', 'Visual', 'right_', 'left_', 'Brainstem', 'CST', 'AAA', 'choroid-plexus',

@@ -554,8 +554,10 @@ def get_electrodes_dir():
 def write_results_to_csv(results, args):
     if args.write_all_labels:
         utils.make_dir(utils.get_resources_fol())
-        cortical_rois = lu.read_labels(args.subject[0], args.subjects_dir, args.atlas, only_names=True,
-            output_fname=op.join(utils.get_resources_fol(), '{}_corticals.txt'.format(args.atlas)), n_jobs=args.n_jobs)
+        cortical_rois = lu.read_labels(
+            args.subject[0], args.subjects_dir, args.atlas, only_names=True,
+            output_fname=op.join(utils.get_resources_fol(), '{}_corticals.txt'.format(args.atlas)),
+            remove_unknown=True, n_jobs=args.n_jobs)
         input_fname = output_fname = op.join(utils.get_resources_fol(), 'subcorticals.txt')
         subcortical_rois, subcortical_rois_header = fu.get_subcortical_regions(args.excludes, output_fname, input_fname,
               ['Left-Cerebral-White-Matter', 'Right-Cerebral-White-Matter'])

@@ -1,13 +1,13 @@
 # from surfer import Brain
+import csv
 import glob
 import os
 import shutil
-import numpy as np
-import csv
-from scipy.spatial.distance import cdist
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 
+import matplotlib.pyplot as plt
+import numpy as np
+from mpl_toolkits.mplot3d import Axes3D
+from scipy.spatial.distance import cdist
 
 SUBJECTS_DIR = '/homes/5/npeled/space3/subjects'
 COPY_FROM = '/homes/5/npeled/space3/Downloads/for_noam'
@@ -110,11 +110,29 @@ def check_labels(subject, hemi, atlas):
     brain.save_image(os.path.join(SUBJECTS_DIR, subject, 'label', '{}_{}_labels.png'.format(atlas, hemi)))
 
 
+def compare_between_files(csv1, csv2):
+    data1 = np.genfromtxt(csv1, delimiter=',', dtype=str)
+    data2 = np.genfromtxt(csv2, delimiter=',', dtype=str)
+    for line_ind, (line1, line2) in enumerate(zip(data1, data2)):
+        for col_ind, (val1, val2) in enumerate(zip(line1, line2)):
+            try:
+                fval1, fval2 = float(val1), float(val2)
+                same = abs(fval2-fval1) < 1e-2
+            except ValueError:
+                same = val1 == val2
+            if not same:
+                print('diff in line {} col {}: {}, {}'.format(line_ind, col_ind, val1, val2))
+
+
 if __name__ == '__main__':
     # copy_some_files()
     # electrodes_npz_to_csv('/homes/5/npeled/space3/subjects/mg79/electrodes/electrodes_positions.npz',
     #     '/homes/5/npeled/space3/subjects/mg79/electrodes/mg79_RAS.csv')
-    check_cigar(4, 2)
+    # check_cigar(4, 2)
     # copy_some_files2()
     # check_labels('mg96', 'rh', 'laus250')
+    for subject in ['mg72','mg83','mg85','mg88']:
+        print('****** {} ******'.format(subject))
+        compare_between_files('/home/noam/code/electrodes_rois/electrodes/{}_aparc.DKTatlas40_electrodes_cigar_r_3_l_4_bipolar.csv'.format(subject),
+                          '/home/noam/Desktop/{}_aparc.DKTatlas40_electrodes_cigar_r_3_l_4_bipolar.csv'.format(subject))
     print('finish!')
