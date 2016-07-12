@@ -331,7 +331,7 @@ def rename_files(source_fnames, dest_fname):
 
 
 def prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, local_subjects_dir,
-                                              args, print_traceback=True):
+                                              args, sftp_password='', print_traceback=True):
 
     local_subject_dir = os.path.join(local_subjects_dir, subject)
     all_files_exists = check_if_all_neccesary_files_exist(neccesary_files, local_subject_dir, False)
@@ -339,7 +339,7 @@ def prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, 
         return True
     if args.sftp:
         sftp_copy_subject_files(subject, neccesary_files, args.sftp_username, args.sftp_domain,
-                                local_subjects_dir, remote_subject_dir, print_traceback)
+                                local_subjects_dir, remote_subject_dir, sftp_password, print_traceback)
     else:
         for fol, files in neccesary_files.items():
             if not os.path.isdir(os.path.join(local_subject_dir, fol)):
@@ -353,9 +353,7 @@ def prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, 
                     if print_traceback:
                         print(traceback.format_exc())
     all_files_exists = check_if_all_neccesary_files_exist(neccesary_files, local_subject_dir)
-    if not all_files_exists:
-        # raise Exception('Not all files exist in the local subject folder!!!')
-        return False
+    return all_files_exists
 
 
 def check_if_all_neccesary_files_exist(neccesary_files, local_subject_dir, trace=True):
@@ -370,12 +368,13 @@ def check_if_all_neccesary_files_exist(neccesary_files, local_subject_dir, trace
 
 
 def sftp_copy_subject_files(subject, neccesary_files, username, domain, local_subjects_dir, remote_subject_dir,
-                            print_traceback=True):
+                            password='', print_traceback=True):
     import pysftp
     import getpass
 
     local_subject_dir = op.join(local_subjects_dir, subject)
-    password = getpass.getpass('Please enter the sftp password for {}: '.format(username))
+    if password == '':
+        password = getpass.getpass('Please enter the sftp password for {}: '.format(username))
     with pysftp.Connection(domain, username=username, password=password) as sftp:
         for fol, files in neccesary_files.items():
             if not os.path.isdir(op.join(local_subject_dir, fol)):
