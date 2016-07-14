@@ -700,8 +700,8 @@ def check_for_annot_file(subject, args):
     annot_file = op.join(args.subjects_dir, subject, 'label', '{}.{}.annot'.format('{hemi}', args.atlas))
     if '{}.annot'.format(args.atlas) in EXISTING_FREESURFER_ANNOTATIONS and \
             (not op.isfile(annot_file.format(hemi='rh')) or not op.isfile(annot_file.format(hemi='lh'))):
-        overwrite_annot = False
-        solve_labels_collisions = False
+        args.overwrite_annotation = False
+        args.solve_labels_collisions = False
         if args.freesurfer_home == '':
             raise Exception('There are no annotation file for {}, please source freesurfer and run again'.format(args.atlas))
         fu.create_freesurfer_annotation_file(subject, args.atlas, args.subjects_dir, args.freesurfer_home)
@@ -709,11 +709,11 @@ def check_for_annot_file(subject, args):
             op.isfile(annot_file.format(hemi='lh')):
         # Nothing to do, read the labels from an existing annotation file
         return
-    if args.overwrite_labels or overwrite_annot or not op.isfile(annot_file.format(hemi='rh')) or not \
+    if args.overwrite_labels or args.overwrite_annotation or not op.isfile(annot_file.format(hemi='rh')) or not \
             op.isfile(annot_file.format(hemi='lh')):
         morph_labels_from_fsaverage(subject, args.subjects_dir, args.atlas, n_jobs=args.n_jobs,
                                     fsaverage=args.fsaverage, overwrite=args.overwrite_labels)
-        if solve_labels_collisions:
+        if args.solve_labels_collisions:
             backup_labels_fol = '{}_before_solve_collision'.format(args.atlas, args.fsaverage)
             lu.solve_labels_collision(subject, args.subjects_dir, args.atlas, backup_labels_fol, args.n_jobs)
         # lu.backup_annotation_files(subject, subjects_dir, atlas)
