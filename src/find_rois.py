@@ -794,7 +794,10 @@ def copy_electrodes_ras_file(subject, local_subject_dir, remote_subject_dir):
 
 
 def check_for_necessary_files(subject, args, sftp_password=''):
-    remote_subject_dir = build_remote_subject_dir(args.remote_subject_dir_template, subject)
+    if '{subject}' in args.remote_subject_dir_template:
+        remote_subject_dir = build_remote_subject_dir(args.remote_subject_dir_template, subject)
+    else:
+        remote_subject_dir = args.remote_subject_dir_template
     all_files_exist = utils.prepare_local_subjects_folder(args.neccesary_files, subject, remote_subject_dir,
         args.subjects_dir, args, sftp_password, print_traceback=True)
     if not all_files_exist:
@@ -981,7 +984,7 @@ def get_args(argv=None):
     parser.add_argument('--overwrite_csv', help='overwrite_csv', required=False, default=1, type=au.is_true)
     parser.add_argument('--read_labels_from_annotation', help='read_labels_from_annotation', required=False, default=1, type=au.is_true)
     parser.add_argument('--solve_labels_collisions', help='solve_labels_collisions', required=False, default=0, type=au.is_true)
-    parser.add_argument('--remote_subject_dir_template', help='remote_subject_dir_template', required=False)
+    parser.add_argument('--remote_subject_dir_template', help='remote_subject_dir_template', required=False, default='')
     parser.add_argument('--pos_fname', help='electrodes positions fname', required=False, default='')
     parser.add_argument('--elecs_dir', help='electrodes positions folder', required=False, default='')
     parser.add_argument('--output_postfix', help='output_postfix', required=False, default='')
