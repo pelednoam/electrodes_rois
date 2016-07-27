@@ -478,8 +478,9 @@ def get_electrodes(subject, bipolar, args):
         args.elecs_dir = get_electrodes_dir()
     else:
         rename_and_convert_electrodes_file(subject, args.elecs_dir)
-        shutil.copy(op.join(args.elecs_dir, '{}_RAS.csv'.format(subject)),
-                    op.join(subject_elecs_dir, '{}_RAS.csv'.format(subject)))
+        if not op.isfile(op.join(subject_elecs_dir, '{}_RAS.csv'.format(subject))):
+            shutil.copy(op.join(args.elecs_dir, '{}_RAS.csv'.format(subject)),
+                        op.join(subject_elecs_dir, '{}_RAS.csv'.format(subject)))
     check_for_electrodes_coordinates_file(subject, args.subjects_dir, args.elecs_dir)
     elec_file = op.join(args.elecs_dir, '{}.csv'.format(subject))
     data = np.genfromtxt(elec_file, dtype=str, delimiter=args.csv_delimiter)
@@ -795,7 +796,7 @@ def copy_electrodes_ras_file(subject, local_subject_dir, remote_subject_dir):
 
 def check_for_necessary_files(subject, args, sftp_password=''):
     if '{subject}' in args.remote_subject_dir_template:
-        remote_subject_dir = build_remote_subject_dir(args.remote_subject_dir_template, subject)
+        remote_subject_dir = build_remote_subject_dir(subject, args.remote_subject_dir_template, args.remote_subject_dir_func)
     else:
         remote_subject_dir = args.remote_subject_dir_template
     all_files_exist = utils.prepare_local_subjects_folder(args.neccesary_files, subject, remote_subject_dir,
@@ -946,7 +947,7 @@ def remove_white_matter_and_normalize(elc):
     return subcortical_probs_norm, subcortical_rois_norm
 
 
-def build_remote_subject_dir(remote_subject_dir_template, subject):
+def build_remote_subject_dir(subject, remote_subject_dir_template, remote_subject_dir_func):
     if isinstance(remote_subject_dir_template, dict):
         if 'func' in remote_subject_dir_template:
             template_val = remote_subject_dir_template['func'](subject)
@@ -954,7 +955,11 @@ def build_remote_subject_dir(remote_subject_dir_template, subject):
         else:
             remote_subject_dir = remote_subject_dir_template['template'].format(subject=subject)
     else:
+        if remote_subject_dir_func != '':
+            if remote_subject_dir_func == 'upper':
+                subject = subject.upper()
         remote_subject_dir = remote_subject_dir_template.format(subject=subject)
+
     return remote_subject_dir
 
 
@@ -985,6 +990,7 @@ def get_args(argv=None):
     parser.add_argument('--read_labels_from_annotation', help='read_labels_from_annotation', required=False, default=1, type=au.is_true)
     parser.add_argument('--solve_labels_collisions', help='solve_labels_collisions', required=False, default=0, type=au.is_true)
     parser.add_argument('--remote_subject_dir_template', help='remote_subject_dir_template', required=False, default='')
+    parser.add_argument('--remote_subject_dir_func', help='remote_subject_dir_func', required=False, default='')
     parser.add_argument('--pos_fname', help='electrodes positions fname', required=False, default='')
     parser.add_argument('--elecs_dir', help='electrodes positions folder', required=False, default='')
     parser.add_argument('--output_postfix', help='output_postfix', required=False, default='')
