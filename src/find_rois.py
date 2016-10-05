@@ -400,8 +400,8 @@ def calc_neighbors(pos, approx=None, dimensions=None, calc_bins=False):
     elif not dimensions is None:
         sx, sy, sz = dimensions
     else:
-        raise Exception('approx and dimensions are None!')
         logging.error('calc_neighbors: approx and dimensions are None!')
+        raise Exception('approx and dimensions are None!')
 
     x, y, z = np.meshgrid(range(sx), range(sy), range(sz))
 
