@@ -476,11 +476,12 @@ def get_electrodes(subject, bipolar, args):
     utils.make_dir(subject_elecs_dir)
     if args.elecs_dir == '':
         args.elecs_dir = get_electrodes_dir()
-    else:
-        rename_and_convert_electrodes_file(subject, args.elecs_dir)
-        if not op.isfile(op.join(subject_elecs_dir, '{}_RAS.csv'.format(subject))):
-            shutil.copy(op.join(args.elecs_dir, '{}_RAS.csv'.format(subject)),
-                        op.join(subject_elecs_dir, '{}_RAS.csv'.format(subject)))
+    # else:
+    # rename_and_convert_electrodes_file(subject, args.elecs_dir)
+    rename_and_convert_electrodes_file(subject, subject_elecs_dir)
+    if not op.isfile(op.join(subject_elecs_dir, '{}_RAS.csv'.format(subject))):
+        shutil.copy(op.join(args.elecs_dir, '{}_RAS.csv'.format(subject)),
+                    op.join(subject_elecs_dir, '{}_RAS.csv'.format(subject)))
     check_for_electrodes_coordinates_file(subject, args.subjects_dir, args.elecs_dir)
     elec_file = op.join(args.elecs_dir, '{}.csv'.format(subject))
     data = np.genfromtxt(elec_file, dtype=str, delimiter=args.csv_delimiter)
@@ -832,14 +833,15 @@ def rename_and_convert_electrodes_file(subject, electrodes_fol):
     subject_elec_fname_csv = subject_elec_fname_pattern.format(subject=subject, postfix='csv')
     subject_elec_fname_xlsx = subject_elec_fname_pattern.format(subject=subject, postfix='xlsx')
 
+    subject_upper = subject[:2].upper() + subject[2:]
     utils.rename_files([subject_elec_fname_no_ras_pattern.format(subject=subject, postfix='xlsx'),
-                        subject_elec_fname_no_ras_pattern.format(subject=subject.upper(), postfix='xlsx'),
+                        subject_elec_fname_no_ras_pattern.format(subject=subject_upper, postfix='xlsx'),
                         subject_elec_fname_no_ras_pattern.format(subject=subject, postfix='xls'),
-                        subject_elec_fname_no_ras_pattern.format(subject=subject.upper(), postfix='xls'),
-                        subject_elec_fname_pattern.format(subject=subject.upper(), postfix='xlsx'),
-                        subject_elec_fname_pattern.format(subject=subject.upper(), postfix='xls')],
+                        subject_elec_fname_no_ras_pattern.format(subject=subject_upper, postfix='xls'),
+                        subject_elec_fname_pattern.format(subject=subject_upper, postfix='xlsx'),
+                        subject_elec_fname_pattern.format(subject=subject_upper, postfix='xls')],
                        subject_elec_fname_xlsx)
-    utils.rename_files([subject_elec_fname_pattern.format(subject=subject.upper(), postfix='csv')],
+    utils.rename_files([subject_elec_fname_pattern.format(subject=subject_upper, postfix='csv')],
                        subject_elec_fname_csv)
     # utils.rename_files([subject_elec_fname_pattern.format(subject=subject.upper(), postfix='xlsx')],
     #                    subject_elec_fname_xlsx)
