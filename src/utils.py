@@ -350,7 +350,7 @@ def prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, 
                 remote_fname = op.join(remote_subject_dir, fol, file_name)
                 try:
                     if not os.path.isfile(local_fname):
-                        print('coping {remote_fname} to {local_fname}'.format(file_name))
+                        print('coping {} to {}'.format(remote_fname, local_fname))
                         shutil.copyfile(remote_fname, local_fname)
                 except:
                     if print_traceback:
