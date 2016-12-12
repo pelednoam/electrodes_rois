@@ -553,7 +553,7 @@ def get_electrodes_dir():
     return elec_dir
 
 
-def write_results_to_csv(results, args):
+def write_results_to_csv(results, elecs_types, args):
     if args.write_all_labels:
         utils.make_dir(utils.get_resources_fol())
         cortical_rois = lu.read_labels(
@@ -577,33 +577,37 @@ def write_results_to_csv(results, args):
     for bipolar in results.keys():
         for subject, elecs in results[bipolar].items():
             results_fname_csv = get_output_csv_fname(subject, bipolar, args)
-            write_values(elecs, results_fname_csv,
+            write_values(elecs, elecs_types[subject], results_fname_csv,
                 ['electrode'] + cortical_rois + subcortical_rois_header + ['approx', 'elc_length'],
                 [cortical_rois, subcortical_rois],
                 ['cortical_rois','subcortical_rois'], ['cortical_probs', 'subcortical_probs'], args, bipolar)
 
             if args.write_only_cortical:
-                write_values(elecs, results_fname_csv.replace('electrodes', 'cortical_electrodes'),
+                write_values(elecs, elecs_types[subject], results_fname_csv.replace('electrodes', 'cortical_electrodes'),
                              ['electrode'] + cortical_rois, [cortical_rois],['cortical_rois'], ['cortical_probs'],
                              args, bipolar)
 
             if args.write_only_subcortical:
-                write_values(elecs, results_fname_csv.replace('electrodes', 'subcortical_electrodes'),
+                write_values(elecs, elecs_types[subject], results_fname_csv.replace('electrodes', 'subcortical_electrodes'),
                     ['electrode']  + subcortical_rois_header, [subcortical_rois],
                     ['subcortical_rois'], ['subcortical_probs'], args, bipolar)
 
 
-def write_values(elecs, results_fname, header, rois_arr, rois_names, probs_names, args, bipolar=False):
+def write_values(elecs, elecs_types, results_fname, header, rois_arr, rois_names, probs_names, args, bipolar=False):
     try:
         with open(results_fname, 'w') as fp:
             writer = csv.writer(fp, delimiter=',')
             writer.writerow(header)
             print('Writing {} with header length of {}'.format(results_fname, len(header)))
-            for elc in elecs:
+            for elc, elc_type in zip(elecs, elecs_types):
                 elc_name = elc['name']
-                if args.write_compact_bipolar and bipolar and '-' in elc_name:
-                    elc_group, elc_num1, elc_num2 = elec_group_number(elc_name, True)
-                    elc_name = '{}{}{}'.format(elc_group, elc_num1, elc_num2)
+                if args.write_compact_bipolar:
+                    if bipolar and '-' in elc_name:
+                        elc_group, elc_num1, elc_num2 = elec_group_number(elc_name, True)
+                        elc_name = '{}.{}{}'.format(elc_group, elc_num1, elc_num2)
+                    if elc_type == GRID:
+                        elc_group, elc_num = elec_group_number(elc_name, False)
+                        elc_name = '{}.{}'.format(elc_group, elc_num)
                 values = [elc_name]
                 for rois, rois_field, prob_field in zip(rois_arr, rois_names, probs_names):
                     for col, roi in enumerate(rois):
@@ -867,6 +871,7 @@ def get_output_csv_fname(subject, bipolar, args):
 def run_for_all_subjects(args):
     ok_subjects, bad_subjects = [], []
     results = defaultdict(dict)
+    all_elecs_types = {}
     logging.basicConfig(filename='log.log',level=logging.DEBUG)
     all_files_exist = check_if_files_exist(args)
     if args.sftp and not all_files_exist:
@@ -879,42 +884,46 @@ def run_for_all_subjects(args):
         os.environ['SUBJECT'] = subject
         results_fname_csv = get_output_csv_fname(subject, bipolar, args)
         results_fname_pkl = results_fname_csv.replace('csv', 'pkl')
-        if not op.isfile(results_fname_csv) or args.overwrite_csv:
-            try:
-                if op.isfile(results_fname_pkl) and not args.overwrite:
-                    elecs = utils.load(results_fname_pkl)
-                elif 'all' in args.function:
-                    check_for_necessary_files(subject, args, sftp_password)
-                    check_for_annot_file(subject, args)
-                    if args.only_check_files:
-                        continue
-                    elecs_names, elecs_pos, elecs_dists, elecs_types = get_electrodes(subject, bipolar, args)
-                    elcs_ori = get_electrodes_orientation(
-                        elecs_names, elecs_pos, bipolar, elecs_types, elecs_oris_fname=args.pos_fname)
-                    labels = read_labels_vertices(args.subjects_dir, subject, args.atlas, args.read_labels_from_annotation,
-                        args.overwrite_labels_pkl, args.n_jobs)
-                    elecs = identify_roi_from_atlas(
-                        args.atlas, labels, elecs_names, elecs_pos, elcs_ori, args.error_radius, args.elc_length,
-                        elecs_dists, elecs_types, args.strech_to_dist, args.enlarge_if_no_hit,
-                        bipolar, args.subjects_dir, subject, args.excludes, args.specific_elec, args.n_jobs)
-                    if args.specific_elec != '':
-                        continue
-                    utils.save(elecs, results_fname_pkl)
-                if au.should_run('add_colors_to_probs', args):
-                    add_colors_to_probs(subject, args.atlas, results_fname_pkl)
-                results[bipolar][subject] = elecs
-                ok_subjects.append(subject)
-                if op.isdir(args.mmvt_dir):
-                    utils.make_dir(op.join(args.mmvt_dir, subject, 'electrodes'))
-                    fname = os.path.basename(results_fname_pkl)
-                    shutil.copy(results_fname_pkl, op.join(args.mmvt_dir, subject, 'electrodes', fname))
-            except:
-                bad_subjects.append(subject)
-                logging.error('{}: {}'.format(subject, traceback.format_exc()))
-                print(traceback.format_exc())
+        try:
+            if op.isfile(results_fname_pkl) and not args.overwrite:
+                elecs = utils.load(results_fname_pkl)
+                _, _, _, elecs_types = get_electrodes(subject, bipolar, args)
+                all_elecs_types[subject] = elecs_types
+            elif 'all' in args.function:
+                check_for_necessary_files(subject, args, sftp_password)
+                check_for_annot_file(subject, args)
+                if args.only_check_files:
+                    continue
+                elecs_names, elecs_pos, elecs_dists, elecs_types = get_electrodes(subject, bipolar, args)
+                all_elecs_types[subject] = elecs_types
+                elcs_ori = get_electrodes_orientation(
+                    elecs_names, elecs_pos, bipolar, elecs_types, elecs_oris_fname=args.pos_fname)
+                labels = read_labels_vertices(args.subjects_dir, subject, args.atlas, args.read_labels_from_annotation,
+                    args.overwrite_labels_pkl, args.n_jobs)
+                elecs = identify_roi_from_atlas(
+                    args.atlas, labels, elecs_names, elecs_pos, elcs_ori, args.error_radius, args.elc_length,
+                    elecs_dists, elecs_types, args.strech_to_dist, args.enlarge_if_no_hit,
+                    bipolar, args.subjects_dir, subject, args.excludes, args.specific_elec, args.n_jobs)
+                if args.specific_elec != '':
+                    continue
+                utils.save(elecs, results_fname_pkl)
+            if au.should_run('add_colors_to_probs', args):
+                add_colors_to_probs(subject, args.atlas, results_fname_pkl)
+            results[bipolar][subject] = elecs
+            ok_subjects.append(subject)
+            if op.isdir(args.mmvt_dir):
+                utils.make_dir(op.join(args.mmvt_dir, subject, 'electrodes'))
+                mmvt_fname = op.join(args.mmvt_dir, subject, 'electrodes', op.basename(results_fname_pkl))
+                if args.overwrite_mmvt or not op.isfile(mmvt_fname):
+                    shutil.copy(results_fname_pkl, mmvt_fname)
+        except:
+            bad_subjects.append(subject)
+            logging.error('{}: {}'.format(subject, traceback.format_exc()))
+            print(traceback.format_exc())
 
     # Write the results for all the subjects at once, to have a common labeling
-    write_results_to_csv(results, args)
+    if not op.isfile(results_fname_csv) or args.overwrite_csv:
+        write_results_to_csv(results, all_elecs_types, args)
 
     if ok_subjects:
         print('ok subjects:')
@@ -989,6 +998,7 @@ def get_args(argv=None):
     parser.add_argument('--write_all_labels', help='Write all the labels', required=False, default=1, type=au.is_true)
     parser.add_argument('--overwrite_labels_pkl', help='overwrite_labels_pkl', required=False, default=1, type=au.is_true)
     parser.add_argument('--overwrite_csv', help='overwrite_csv', required=False, default=1, type=au.is_true)
+    parser.add_argument('--overwrite_mmvt', help='overwrite_mmvt', required=False, default=1, type=au.is_true)
     parser.add_argument('--read_labels_from_annotation', help='read_labels_from_annotation', required=False, default=1, type=au.is_true)
     parser.add_argument('--solve_labels_collisions', help='solve_labels_collisions', required=False, default=0, type=au.is_true)
     parser.add_argument('--remote_subject_dir_template', help='remote_subject_dir_template', required=False, default='')
@@ -996,7 +1006,7 @@ def get_args(argv=None):
     parser.add_argument('--pos_fname', help='electrodes positions fname', required=False, default='')
     parser.add_argument('--elecs_dir', help='electrodes positions folder', required=False, default='')
     parser.add_argument('--output_postfix', help='output_postfix', required=False, default='')
-    parser.add_argument('--write_compact_bipolar', help='write x23 instead x3-x2', required=False, default=0, type=au.is_true)
+    parser.add_argument('--write_compact_bipolar', help='write x.23 instead x3-x2', required=False, default=0, type=au.is_true)
     parser.add_argument('--csv_delimiter', help='ras csv delimiter', required=False, default=',')
     parser.add_argument('--excludes', help='excluded labels', required=False, type=au.str_arr_type,
         default='Unknown,unknown,Cerebral-Cortex,corpuscallosum,WM-hypointensities,Ventricle,Inf-Lat-Vent,choroid-plexus')
