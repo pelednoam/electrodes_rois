@@ -856,7 +856,7 @@ def rename_and_convert_electrodes_file(subject, electrodes_fol):
 
 def check_if_files_exist(args):
     return np.all([utils.check_if_all_neccesary_files_exist(
-        args.neccesary_files, op.join(args.subjects_dir, subject)) for subject in args.subject])
+        subject, args.neccesary_files, op.join(args.subjects_dir, subject)) for subject in args.subject])
 
 
 def get_output_csv_fname(subject, bipolar, args):
@@ -1027,7 +1027,9 @@ def get_args(argv=None):
     os.environ['SUBJECTS_DIR'] = args.subjects_dir
     args.neccesary_files = {
         'mri': ['aseg.mgz'],
-        'surf': ['rh.pial', 'lh.pial', 'rh.sphere.reg', 'lh.sphere.reg', 'lh.white', 'rh.white', 'lh.smoothwm', 'rh.smoothwm']}
+        'surf': ['rh.pial', 'lh.pial', 'rh.sphere.reg', 'lh.sphere.reg', 'lh.white', 'rh.white',
+                 'lh.smoothwm', 'rh.smoothwm'],
+        'electrodes': ['{subject}_RAS.csv']}
     print(args)
     return args
 

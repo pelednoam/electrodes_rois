@@ -334,7 +334,7 @@ def prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, 
                                               args, sftp_password='', print_traceback=True):
 
     local_subject_dir = os.path.join(local_subjects_dir, subject)
-    all_files_exists = check_if_all_neccesary_files_exist(neccesary_files, local_subject_dir, False)
+    all_files_exists = check_if_all_neccesary_files_exist(subject, neccesary_files, local_subject_dir, False)
     if all_files_exists:
         return True
     if args.sftp:
@@ -345,6 +345,7 @@ def prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, 
             if not os.path.isdir(os.path.join(local_subject_dir, fol)):
                 os.makedirs(os.path.join(local_subject_dir, fol))
             for file_name in files:
+                file_name = file_name.replace('{subject}', subject)
                 try:
                     if not os.path.isfile(os.path.join(local_subject_dir, fol, file_name)):
                         shutil.copyfile(os.path.join(remote_subject_dir, fol, file_name),
@@ -352,14 +353,15 @@ def prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, 
                 except:
                     if print_traceback:
                         print(traceback.format_exc())
-    all_files_exists = check_if_all_neccesary_files_exist(neccesary_files, local_subject_dir)
+    all_files_exists = check_if_all_neccesary_files_exist(subject, neccesary_files, local_subject_dir)
     return all_files_exists
 
 
-def check_if_all_neccesary_files_exist(neccesary_files, local_subject_dir, trace=True):
+def check_if_all_neccesary_files_exist(subject, neccesary_files, local_subject_dir, trace=True):
     all_files_exists = True
     for fol, files in neccesary_files.items():
         for file_name in files:
+            file_name = file_name.replace('{subject}', subject)
             if not os.path.isfile(os.path.join(local_subject_dir, fol, file_name)):
                 if trace:
                     print("The file {} doesn't exist in the local subjects folder!!!".format(file_name))
@@ -381,6 +383,7 @@ def sftp_copy_subject_files(subject, neccesary_files, username, domain, local_su
                 os.makedirs(op.join(local_subject_dir, fol))
             os.chdir(op.join(local_subject_dir, fol))
             for file_name in files:
+                file_name = file_name.replace('{subject}', subject)
                 try:
                     if not op.isfile(op.join(local_subject_dir, fol, file_name)):
                         with sftp.cd(op.join(remote_subject_dir, fol)):
