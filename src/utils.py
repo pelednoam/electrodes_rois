@@ -346,10 +346,12 @@ def prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, 
                 os.makedirs(os.path.join(local_subject_dir, fol))
             for file_name in files:
                 file_name = file_name.replace('{subject}', subject)
+                local_fname = op.join(local_subject_dir, fol, file_name)
+                remote_fname = op.join(remote_subject_dir, fol, file_name)
                 try:
-                    if not os.path.isfile(os.path.join(local_subject_dir, fol, file_name)):
-                        shutil.copyfile(os.path.join(remote_subject_dir, fol, file_name),
-                                        os.path.join(local_subject_dir, fol, file_name))
+                    if not os.path.isfile(local_fname):
+                        print('coping {remote_fname} to {local_fname}'.format(file_name))
+                        shutil.copyfile(remote_fname, local_fname)
                 except:
                     if print_traceback:
                         print(traceback.format_exc())
