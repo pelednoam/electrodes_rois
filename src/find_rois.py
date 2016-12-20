@@ -1028,8 +1028,8 @@ def get_args(argv=None):
     args.neccesary_files = {
         'mri': ['aseg.mgz'],
         'surf': ['rh.pial', 'lh.pial', 'rh.sphere.reg', 'lh.sphere.reg', 'lh.white', 'rh.white',
-                 'lh.smoothwm', 'rh.smoothwm'],
-        'electrodes': ['{subject}_RAS.csv']}
+                 'lh.smoothwm', 'rh.smoothwm']}
+        # 'electrodes': ['{subject}_RAS.csv']}
     print(args)
     return args
 
