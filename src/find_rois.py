@@ -479,6 +479,9 @@ def get_electrodes(subject, bipolar, args):
     # else:
     # rename_and_convert_electrodes_file(subject, args.elecs_dir)
     rename_and_convert_electrodes_file(subject, subject_elecs_dir)
+    if not op.isfile(op.join(args.elecs_dir, '{}_RAS.csv'.format(subject))) and \
+            not op.isfile(op.join(subject_elecs_dir, '{}_RAS.csv'.format(subject))):
+        raise Exception('No coordinates csv file for {}!'.format(subject))
     if not op.isfile(op.join(subject_elecs_dir, '{}_RAS.csv'.format(subject))):
         shutil.copy(op.join(args.elecs_dir, '{}_RAS.csv'.format(subject)),
                     op.join(subject_elecs_dir, '{}_RAS.csv'.format(subject)))
@@ -838,20 +841,24 @@ def rename_and_convert_electrodes_file(subject, electrodes_fol):
     subject_elec_fname_xlsx = subject_elec_fname_pattern.format(subject=subject, postfix='xlsx')
 
     subject_upper = subject[:2].upper() + subject[2:]
-    utils.rename_files([subject_elec_fname_no_ras_pattern.format(subject=subject, postfix='xlsx'),
-                        subject_elec_fname_no_ras_pattern.format(subject=subject_upper, postfix='xlsx'),
-                        subject_elec_fname_no_ras_pattern.format(subject=subject, postfix='xls'),
-                        subject_elec_fname_no_ras_pattern.format(subject=subject_upper, postfix='xls'),
-                        subject_elec_fname_pattern.format(subject=subject_upper, postfix='xlsx'),
-                        subject_elec_fname_pattern.format(subject=subject_upper, postfix='xls')],
-                       subject_elec_fname_xlsx)
-    utils.rename_files([subject_elec_fname_pattern.format(subject=subject_upper, postfix='csv')],
+    files = [patt.format(subject=sub, postfix=post) for patt, sub, post in product(
+        [subject_elec_fname_no_ras_pattern, subject_elec_fname_pattern], [subject, subject_upper], ['xls', 'xlsx'])]
+    utils.rename_files(files, subject_elec_fname_xlsx)
+    # utils.rename_files([subject_elec_fname_no_ras_pattern.format(subject=subject, postfix='xlsx'),
+    #                     subject_elec_fname_no_ras_pattern.format(subject=subject_upper, postfix='xlsx'),
+    #                     subject_elec_fname_no_ras_pattern.format(subject=subject, postfix='xls'),
+    #                     subject_elec_fname_no_ras_pattern.format(subject=subject_upper, postfix='xls'),
+    #                     subject_elec_fname_pattern.format(subject=subject_upper, postfix='xlsx'),
+    #                     subject_elec_fname_pattern.format(subject=subject_upper, postfix='xls')],
+    #                    subject_elec_fname_xlsx)
+    utils.rename_files([subject_elec_fname_pattern.format(subject=subject_upper, postfix='csv'),
+                        subject_elec_fname_pattern.format(subject=subject, postfix='csv')],
                        subject_elec_fname_csv)
     # utils.rename_files([subject_elec_fname_pattern.format(subject=subject.upper(), postfix='xlsx')],
     #                    subject_elec_fname_xlsx)
     if op.isfile(subject_elec_fname_xlsx) and \
                     (not op.isfile(subject_elec_fname_csv) or op.getsize(subject_elec_fname_csv) == 0):
-        utils.csv_from_excel(subject_elec_fname_xlsx, subject_elec_fname_csv)
+        utils.csv_from_excel(subject_elec_fname_xlsx, subject_elec_fname_csv, subject)
 
 
 def check_if_files_exist(args):
@@ -873,6 +880,12 @@ def run_for_all_subjects(args):
     results = defaultdict(dict)
     all_elecs_types = {}
     logging.basicConfig(filename='log.log',level=logging.DEBUG)
+    for subject in args.subject:
+        rename_and_convert_electrodes_file(subject, op.join(args.subjects_dir, subject, 'electrodes'))
+        if not op.isfile(op.join(args.subjects_dir, subject, 'electrodes', '{}_RAS.csv'.format(subject))) and op.isfile(
+                op.join(get_electrodes_dir(), '{}.csv'.format(subject))):
+            shutil.copyfile(op.join(get_electrodes_dir(), '{}.csv'.format(subject)),
+                            op.join(args.subjects_dir, subject, 'electrodes', '{}_RAS.csv'.format(subject)))
     all_files_exist = check_if_files_exist(args)
     if args.sftp and not all_files_exist:
         sftp_password = getpass.getpass('Please enter the sftp password for {}: '.format(args.sftp_username))

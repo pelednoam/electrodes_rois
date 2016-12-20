@@ -97,14 +97,21 @@ def get_subfolders(fol):
     return [os.path.join(fol,subfol) for subfol in os.listdir(fol) if os.path.isdir(os.path.join(fol,subfol))]
 
 
-def csv_from_excel(xlsx_fname, csv_fname):
+def csv_from_excel(xlsx_fname, csv_fname, subject='', sheet_number=0):
     import xlrd
     # import csv
     wb = xlrd.open_workbook(xlsx_fname)
     # sh = wb.sheet_by_name('Sheet1')
-    if len(wb.sheets()) > 1:
-        raise Exception('More than one sheet in the xlsx file!')
-    sh = wb.sheets()[0]
+    sheets = wb.sheets()
+    sheets = [s for s in sheets if not (s._dimncols == 1 and s._dimnrows == 1)]
+    if len(sheets) > 1:
+        print('{}More than one sheet in the xlsx file:'.format('{}: '.format(subject) if subject != '' else ''))
+        for k, sheet in enumerate(sheets):
+            print('{}) {}'.format(k, sheet.name))
+        sheet_number = int(input('Which one would you like to convert to csv (0,1,...)? '))
+    sh = sheets[sheet_number]
+    if sh._dimncols > 4:
+        raise Exception('More than 4 cols in the sheet! {}'.format(sh._cell_values[0]))
     print('Converting sheet "{}" to csv'.format(sh.name))
     try:
         with open(csv_fname, 'wb') as csv_file:
