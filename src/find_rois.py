@@ -579,11 +579,15 @@ def write_results_to_csv(results, elecs_types, args):
 
     for bipolar in results.keys():
         for subject, elecs in results[bipolar].items():
+            mp_rois = get_most_probable_rois(elecs) # Most probable ROIs for each electrode
             results_fname_csv = get_output_csv_fname(subject, bipolar, args)
             write_values(elecs, elecs_types[subject], results_fname_csv,
                 ['electrode'] + cortical_rois + subcortical_rois_header + ['approx', 'elc_length'],
                 [cortical_rois, subcortical_rois],
                 ['cortical_rois','subcortical_rois'], ['cortical_probs', 'subcortical_probs'], args, bipolar)
+
+            ms_rois_fname_csv = '{}_mprois{}'.format(*op.splitext(results_fname_csv))
+            write_most_probable_rois(mp_rois, ms_rois_fname_csv, elecs_types[subject], bipolar, args)
 
             if args.write_only_cortical:
                 write_values(elecs, elecs_types[subject], results_fname_csv.replace('electrodes', 'cortical_electrodes'),
@@ -605,12 +609,7 @@ def write_values(elecs, elecs_types, results_fname, header, rois_arr, rois_names
             for elc, elc_type in zip(elecs, elecs_types):
                 elc_name = elc['name']
                 if args.write_compact_bipolar:
-                    if bipolar and '-' in elc_name:
-                        elc_group, elc_num1, elc_num2 = elec_group_number(elc_name, True)
-                        elc_name = '{}.{}{}'.format(elc_group, elc_num1, elc_num2)
-                    if elc_type == GRID:
-                        elc_group, elc_num = elec_group_number(elc_name, False)
-                        elc_name = '{}.{}'.format(elc_group, elc_num)
+                    elc_name = get_compact_bipolar_elc_name(elc_name, bipolar, elc_type)
                 values = [elc_name]
                 for rois, rois_field, prob_field in zip(rois_arr, rois_names, probs_names):
                     for col, roi in enumerate(rois):
@@ -624,6 +623,31 @@ def write_values(elecs, elecs_types, results_fname, header, rois_arr, rois_names
     except:
         logging.error('write_values to {}: {}'.format(results_fname, traceback.format_exc()))
         print(traceback.format_exc())
+
+
+def write_most_probable_rois(mp_rois, results_fname, elecs_types, bipolar, args):
+    try:
+        with open(results_fname, 'w') as fp:
+            writer = csv.writer(fp, delimiter=',')
+            writer.writerow(['electrode', 'most probable roi', 'probability'])
+            for (elc_name, ms_roi, prob), elc_type in zip(mp_rois, elecs_types):
+                if args.write_compact_bipolar:
+                    elc_name = get_compact_bipolar_elc_name(elc_name, bipolar, elc_type)
+                writer.writerow([elc_name, ms_roi, prob])
+    except:
+        logging.error('write_values to {}: {}'.format(results_fname, traceback.format_exc()))
+        print(traceback.format_exc())
+
+
+def get_compact_bipolar_elc_name(elc_name, bipolar, elc_type):
+    if bipolar and '-' in elc_name:
+        elc_group, elc_num1, elc_num2 = elec_group_number(elc_name, True)
+        elc_name = '{}.{}{}'.format(elc_group, elc_num1, elc_num2)
+    if elc_type == GRID:
+        elc_group, elc_num = elec_group_number(elc_name, False)
+        elc_name = '{}.{}'.format(elc_group, elc_num)
+    return elc_name
+
 
 
 # def add_labels_per_electrodes_probabilities(subject, elecs_dir='', post_fix=''):
@@ -969,6 +993,34 @@ def remove_white_matter_and_normalize(elc):
     subcortical_probs_norm *= 1/sum(subcortical_probs_norm)
     subcortical_rois_norm = elc['subcortical_rois'][no_white_inds]
     return subcortical_probs_norm, subcortical_rois_norm
+
+
+def get_most_probable_rois(elecs_probs, laterally=True, p_threshold=0):
+    probable_rois = [(elec['name'], *get_most_probable_roi([*elec['cortical_probs'], *elec['subcortical_probs']],
+        [*elec['cortical_rois'], *elec['subcortical_rois']], p_threshold)) for elec in elecs_probs]
+    if laterally:
+        return probable_rois
+    else:
+        return utils.get_hemi_indifferent_rois(probable_rois)
+
+
+def get_most_probable_roi(probs, rois, p_threshold):
+    probs_rois = sorted([(p, r) for p, r in zip(probs, rois)])[::-1]
+    if len(probs_rois) == 0:
+        roi = ''
+    elif len(probs_rois) == 1 and 'white' in probs_rois[0][1].lower():
+        roi = probs_rois[0][1]
+    elif 'white' in probs_rois[0][1].lower():
+        if probs_rois[1][0] > p_threshold:
+            roi = probs_rois[1][1]
+            prob = probs_rois[1][0]
+        else:
+            roi = probs_rois[0][1]
+            prob = probs_rois[0][0]
+    else:
+        roi = probs_rois[0][1]
+        prob = probs_rois[0][0]
+    return roi, prob
 
 
 def build_remote_subject_dir(subject, remote_subject_dir, remote_subject_dir_func):

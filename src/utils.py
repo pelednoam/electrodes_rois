@@ -402,3 +402,16 @@ def sftp_copy_subject_files(subject, neccesary_files, username, domain, local_su
                 except:
                     if print_traceback:
                         print(traceback.format_exc())
+
+
+def get_hemi_indifferent_rois(rois):
+    return set(map(lambda roi:get_hemi_indifferent_roi(roi), rois))
+
+
+def get_hemi_indifferent_roi(roi):
+    return roi.replace('-rh', '').replace('-lh', '').replace('rh-', '').replace('lh-', '').\
+        replace('.rh', '').replace('.lh', '').replace('rh.', '').replace('lh.', '').\
+        replace('Right-', '').replace('Left-', '').replace('-Right', '').replace('-Left', '').\
+        replace('Right.', '').replace('Left.', '').replace('.Right', '').replace('.Left', '').\
+        replace('right-', '').replace('left-', '').replace('-right', '').replace('-left', '').\
+        replace('right.', '').replace('left.', '').replace('.right', '').replace('.left', '')
