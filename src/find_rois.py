@@ -8,7 +8,7 @@ import os.path as op
 import re
 import shutil
 import traceback
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, OrderedDict
 from functools import partial
 from itertools import product
 
@@ -114,12 +114,12 @@ def _find_elecs_roi_parallel(params):
         if specific_elec != '' and elec_name != specific_elec:
             continue
         print('{}: {} / {}'.format(elec_name, elc_num, N))
-        regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length, elec_hemi_vertices, \
+        regions, regions_hits, subcortical_regions, subcortical_hits, approx_after_strech, elc_length, elec_hemi_vertices, \
                 elec_hemi_vertices_dists, hemi = \
             identify_roi_from_atlas_per_electrode(labels, elec_pos, pia_verts, len_lh_pia, lut,
                 aseg_data, elec_name, approx, elc_length, nei_dimensions, elc_ori, elc_dist, elc_type, strech_to_dist,
                 enlarge_if_no_hit, bipolar, subjects_dir, subject, excludes, n_jobs=1)
-        results.append((elec_name, regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length,
+        results.append((elec_name, regions, regions_hits, subcortical_regions, subcortical_hits, approx_after_strech, elc_length,
                         elec_hemi_vertices, elec_hemi_vertices_dists, hemi))
     return results
 
@@ -145,6 +145,8 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lu
 
     if excludes is None:
         excludes = ['Unknown', 'unknown', 'Cerebral-Cortex', 'corpuscallosum', 'WM-hypointensities']
+    compiled_excludes = re.compile('|'.join(excludes))
+    _region_are_excluded = partial(fu.region_are_excluded, compiled_excludes=compiled_excludes)
 
     # find closest vertex
     pia = np.vstack((pia_verts['lh'], pia_verts['rh']))
@@ -153,7 +155,7 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lu
     # we force the label to only contact one hemisphere even if it is
     # beyond the extent of the medial surface
     hemi_str = 'lh' if closest_vert<len_lh_pia else 'rh'
-    # hemi_code = 0 if hemi_str=='lh' else 1
+    hemi_code = 0 if hemi_str=='lh' else 1
 
     if hemi_str == 'rh':
         closest_vert -= len_lh_pia
@@ -163,36 +165,48 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lu
     verts, _ = read_surface(surf_fname)
     # closest_vert_pos = verts[closest_vert]
 
-    if elc_type == GRID:
-        elc_dist = 0
-        elc_length = 0
-        elc_ori = None
+    # if elc_type == GRID:
+    #     elc_dist = 0
+    #     elc_length = 0
+    #     elc_ori = None
 
     we_have_a_hit = False
     if strech_to_dist and bipolar and elc_length < elc_dist:
         elc_length = elc_dist
     while not we_have_a_hit:
-        # grow the area of surface surrounding the vertex
-        # radius_label, = mne.grow_labels(subject, closest_vert, approx, hemi_code,
-        #     subjects_dir=subjects_dir, surface='pial')
+        if elc_type == GRID:
+            regions, regions_hits = [], []
+            # grow the area of surface surrounding the vertex
+            radius_label, = mne.grow_labels(subject, closest_vert, approx, hemi_code,
+                subjects_dir=subjects_dir, surface='pial')
+            # inter_labels, inter_labels_tups = [], []
+            # total_inter_verts = 0
+            for label in labels:
+                label = utils.Bag(label)
+                if label.hemi != radius_label.hemi:
+                    continue
+                overlapped_vertices = np.intersect1d(radius_label.vertices, label.vertices)
+                # overlapped_vertices = set(radius_label.vertices) & set(label['vertices'])
+                if len(overlapped_vertices) > 0 and not _region_are_excluded(str(label.name)):
+                    regions.append(label.name)
+                    regions_hits.append(len(overlapped_vertices))
+                    # total_inter_verts += len(overlapped_vertices)
+                    # inter_labels_tups.append((len(overlapped_vertices), label['name']))
+            # inter_labels_tups = sorted(inter_labels_tups)[::-1]
+            hemi_verts_dists = cdist([verts[closest_vert]], pia_verts[hemi_str])[0]
+            elec_hemi_vertices_mask = hemi_verts_dists < approx
+            subcortical_regions, subcortical_hits = [], []
+            we_have_a_hit = True
+        else:
+            # bins = calc_neighbors(closest_vert_pos, approx + elc_length, nei_dimensions, calc_bins=True)
+            bins = calc_neighbors(pos, approx + elc_length, nei_dimensions, calc_bins=True)
+            elc_line = get_elec_line(pos, elc_ori, elc_length)
+            hemi_verts_dists = np.min(cdist(elc_line, pia_verts[hemi_str]), 0)
+            regions, regions_hits = calc_hits(labels, hemi_str, verts, elc_line, bins, approx, _region_are_excluded)
+            subcortical_regions, subcortical_hits = identify_roi_from_aparc(pos, elc_line, elc_length, lut, aseg_data,
+                approx=approx, nei_dimensions=nei_dimensions, subcortical_only=True, excludes=excludes)
+            we_have_a_hit = do_we_have_a_hit(regions, subcortical_regions)
 
-        # bins = calc_neighbors(closest_vert_pos, approx + elc_length, nei_dimensions, calc_bins=True)
-        bins = calc_neighbors(pos, approx + elc_length, nei_dimensions, calc_bins=True)
-        elc_line = get_elec_line(pos, elc_ori, elc_length)
-
-        hemi_verts_dists = np.min(cdist(elc_line, pia_verts[hemi_str]), 0)
-        elec_hemi_vertices_mask = hemi_verts_dists < approx
-        hemi_vertices_indices = np.arange(len(pia_verts[hemi_str]))
-        elec_hemi_vertices = hemi_vertices_indices[elec_hemi_vertices_mask]
-        elec_hemi_vertices_dists = hemi_verts_dists[elec_hemi_vertices_mask]
-
-        compiled_excludes = re.compile('|'.join(excludes))
-        _region_are_excluded = partial(fu.region_are_excluded, compiled_excludes=compiled_excludes)
-        regions, regions_hits = calc_hits(labels, hemi_str, verts, elc_line, bins, approx, _region_are_excluded)
-        subcortical_regions, subcortical_hits = identify_roi_from_aparc(pos, elc_line, elc_length, lut, aseg_data,
-            approx=approx, nei_dimensions=nei_dimensions, subcortical_only=True, excludes=excludes)
-
-        we_have_a_hit = do_we_have_a_hit(regions, subcortical_regions)
         if not we_have_a_hit and enlarge_if_no_hit:
             approx += .5
             if elc_type == DEPTH:
@@ -200,6 +214,11 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lu
             elif elc_type == GRID:
                 logging.warning('Grid electrode ({}) without a cortical hit?!?! Trying a bigger cigar'.format(elc_name))
             print('No hit! Recalculate with a bigger cigar')
+
+    elec_hemi_vertices_mask = hemi_verts_dists < approx
+    hemi_vertices_indices = np.arange(len(pia_verts[hemi_str]))
+    elec_hemi_vertices = hemi_vertices_indices[elec_hemi_vertices_mask]
+    elec_hemi_vertices_dists = hemi_verts_dists[elec_hemi_vertices_mask]
 
     return regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length,\
            elec_hemi_vertices, elec_hemi_vertices_dists, hemi_str
@@ -579,16 +598,13 @@ def write_results_to_csv(results, elecs_types, args):
 
     for bipolar in results.keys():
         for subject, elecs in results[bipolar].items():
-            mp_rois = get_most_probable_rois(elecs) # Most probable ROIs for each electrode
             results_fname_csv = get_output_csv_fname(subject, bipolar, args)
             write_values(elecs, elecs_types[subject], results_fname_csv,
                 ['electrode'] + cortical_rois + subcortical_rois_header + ['approx', 'elc_length'],
                 [cortical_rois, subcortical_rois],
                 ['cortical_rois','subcortical_rois'], ['cortical_probs', 'subcortical_probs'], args, bipolar)
 
-            ms_rois_fname_csv = '{}_mprois{}'.format(*op.splitext(results_fname_csv))
-            write_most_probable_rois(mp_rois, ms_rois_fname_csv, elecs_types[subject], bipolar, args)
-
+            most_probable_rois_and_electrodes(subject, elecs, results_fname_csv, elecs_types, bipolar)
             if args.write_only_cortical:
                 write_values(elecs, elecs_types[subject], results_fname_csv.replace('electrodes', 'cortical_electrodes'),
                              ['electrode'] + cortical_rois, [cortical_rois],['cortical_rois'], ['cortical_probs'],
@@ -625,6 +641,21 @@ def write_values(elecs, elecs_types, results_fname, header, rois_arr, rois_names
         print(traceback.format_exc())
 
 
+def most_probable_rois_and_electrodes(subject, elecs, results_fname_csv, elecs_types, bipolar):
+    mp_rois = get_most_probable_rois(elecs)  # Most probable ROIs for each electrode
+    mp_roi_elec = OrderedDict()
+    for mp_elec, mp_roi, mp_prob in mp_rois:
+        if mp_roi not in mp_roi_elec:
+            mp_roi_elec[mp_roi] = []
+        if mp_elec not in [e['name'] for e in elecs]:
+            print("sdf")
+        mp_roi_elec[mp_roi].append(mp_elec)
+    ms_rois_fname_csv = '{}_mprois{}'.format(*op.splitext(results_fname_csv))
+    ms_rois_elecs_fname_csv = '{}_rois_electrodes{}'.format(*op.splitext(results_fname_csv))
+    write_rois_electordes(mp_roi_elec, ms_rois_elecs_fname_csv, elecs, elecs_types[subject], bipolar, args)
+    write_most_probable_rois(mp_rois, ms_rois_fname_csv, elecs_types[subject], bipolar, args)
+
+
 def write_most_probable_rois(mp_rois, results_fname, elecs_types, bipolar, args):
     try:
         with open(results_fname, 'w') as fp:
@@ -637,6 +668,23 @@ def write_most_probable_rois(mp_rois, results_fname, elecs_types, bipolar, args)
     except:
         logging.error('write_values to {}: {}'.format(results_fname, traceback.format_exc()))
         print(traceback.format_exc())
+
+
+def write_rois_electordes(rois_elecs, results_fname, elecs, elecs_types, bipolar, args):
+    try:
+        elecs_types_dic = {elec['name']: elec_type for elec, elec_type in zip(elecs, elecs_types)}
+        with open(results_fname, 'w') as fp:
+            writer = csv.writer(fp, delimiter=',')
+            writer.writerow(['roi', 'electrodes'])
+            for roi_name, electrodes in rois_elecs.items():
+                if args.write_compact_bipolar:
+                    electrodes = [get_compact_bipolar_elc_name(elc_name, bipolar, elecs_types_dic[elc_name]) for
+                                  elc_name in electrodes]
+                writer.writerow([roi_name, *electrodes])
+    except:
+        print(traceback.format_exc())
+        logging.error('write_values to {}: {}'.format(results_fname, traceback.format_exc()))
+
 
 
 def get_compact_bipolar_elc_name(elc_name, bipolar, elc_type):
@@ -940,7 +988,7 @@ def run_for_all_subjects(args):
                 elecs = identify_roi_from_atlas(
                     args.atlas, labels, elecs_names, elecs_pos, elcs_ori, args.error_radius, args.elc_length,
                     elecs_dists, elecs_types, args.strech_to_dist, args.enlarge_if_no_hit,
-                    bipolar, args.subjects_dir, subject, args.excludes, args.specific_elec, args.n_jobs)
+                    bipolar, args.subjects_dir, subject, args.excludes, args.specific_elec, n_jobs=args.n_jobs)
                 if args.specific_elec != '':
                     continue
                 utils.save(elecs, results_fname_pkl)
@@ -1008,8 +1056,10 @@ def get_most_probable_roi(probs, rois, p_threshold):
     probs_rois = sorted([(p, r) for p, r in zip(probs, rois)])[::-1]
     if len(probs_rois) == 0:
         roi = ''
+        prob = 0.0
     elif len(probs_rois) == 1 and 'white' in probs_rois[0][1].lower():
         roi = probs_rois[0][1]
+        prob = 1.0
     elif 'white' in probs_rois[0][1].lower():
         if probs_rois[1][0] > p_threshold:
             roi = probs_rois[1][1]
@@ -1021,6 +1071,7 @@ def get_most_probable_roi(probs, rois, p_threshold):
         roi = probs_rois[0][1]
         prob = probs_rois[0][0]
     return roi, prob
+
 
 
 def build_remote_subject_dir(subject, remote_subject_dir, remote_subject_dir_func):
