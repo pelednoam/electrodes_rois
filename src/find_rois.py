@@ -23,8 +23,10 @@ from src import colors_utils as cu
 from src import freesurfer_utils as fu
 from src import labels_utils as lu
 from src import utils
+from src.snap_grid_to_pial import snap_electrodes_to_surface
 
 LINKS_DIR = utils.get_links_dir()
+ELECTRODES_TYPES = ('depth', 'grid', 'strip', 'microgrid', 'neuroport')
 DEPTH, GRID = range(2)
 EXISTING_FREESURFER_ANNOTATIONS = ['aparc.DKTatlas40.annot', 'aparc.annot', 'aparc.a2009s.annot']
 
@@ -438,10 +440,18 @@ def calc_neighbors(pos, approx=None, dimensions=None, calc_bins=False):
 
 
 def grid_or_depth(data):
-    pos = data[:, 1:].astype(float)
+    pos = data[:, 1:4].astype(float)
+    electrodes_types = [None] * pos.shape[0]
+    if data.shape[1] > 4:
+        if len(set(data[:, 4]) - set(ELECTRODES_TYPES)) > 0:
+            raise Exception('In column 5 the only permitted values are {}'.format(ELECTRODES_TYPES))
+        else:
+            for ind, elc_type in enumerate(data[:, 4]):
+                electrodes_types[ind] = GRID if elc_type in ['grid', 'strip'] else DEPTH
+            return np.array(electrodes_types)
+
     dists = defaultdict(list)
     group_type = {}
-    electrodes_group_type = [None] * pos.shape[0]
     for index in range(data.shape[0] - 1):
         elc_group1, _ = elec_group_number(data[index, 0])
         elc_group2, _ = elec_group_number(data[index + 1, 0])
@@ -456,8 +466,8 @@ def grid_or_depth(data):
         print('group {} is {}'.format(group, 'grid' if group_type[group] == GRID else 'depth'))
     for index in range(data.shape[0]):
         elc_group, _ = elec_group_number(data[index, 0])
-        electrodes_group_type[index] = group_type[elc_group]
-    return np.array(electrodes_group_type)
+        electrodes_types[index] = group_type[elc_group]
+    return np.array(electrodes_types)
 
 
 def get_electrodes_from_file(pos_fname, bipolar):
@@ -481,6 +491,14 @@ def raise_err(err_msg):
     raise Exception(err_msg)
 
 
+def get_electrodes_types_set(subject, args):
+    subject_elecs_dir = op.join(args.subjects_dir, subject, 'electrodes')
+    data = read_electrodes_xls(subject, subject_elecs_dir, args)
+    if data.shape[1] > 4:
+        return set(data[:, 4])
+    return []
+
+
 def get_electrodes(subject, bipolar, args):
     if args.pos_fname != '':
         f = np.load(args.pos_fname)
@@ -496,22 +514,11 @@ def get_electrodes(subject, bipolar, args):
     utils.make_dir(subject_elecs_dir)
     if args.elecs_dir == '':
         args.elecs_dir = get_electrodes_dir()
-    # else:
-    # rename_and_convert_electrodes_file(subject, args.elecs_dir)
-    rename_and_convert_electrodes_file(subject, subject_elecs_dir)
-    if not op.isfile(op.join(args.elecs_dir, '{}_RAS.csv'.format(subject))) and \
-            not op.isfile(op.join(subject_elecs_dir, '{}_RAS.csv'.format(subject))):
-        raise Exception('No coordinates csv file for {}!'.format(subject))
-    if not op.isfile(op.join(subject_elecs_dir, '{}_RAS.csv'.format(subject))):
-        shutil.copy(op.join(args.elecs_dir, '{}_RAS.csv'.format(subject)),
-                    op.join(subject_elecs_dir, '{}_RAS.csv'.format(subject)))
-    check_for_electrodes_coordinates_file(subject, args.subjects_dir, args.elecs_dir)
-    elec_file = op.join(args.elecs_dir, '{}.csv'.format(subject))
-    data = np.genfromtxt(elec_file, dtype=str, delimiter=args.csv_delimiter)
-    data = fix_str_items_in_csv(data)
+
+    data = read_electrodes_xls(subject, subject_elecs_dir, args)
     # Check if the electrodes coordinates has a header
     try:
-        header = data[0, 1:].astype(float)
+        header = data[0, 1:4].astype(float)
     except:
         data = np.delete(data, (0), axis=0)
         print('First line in the electrodes RAS coordinates is a header')
@@ -545,7 +552,22 @@ def get_electrodes(subject, bipolar, args):
         logging.error('get_electrodes ({}): not len(names)==len(pos)==len(dists)!'.format(subject))
         raise Exception('get_electrodes: not len(names)==len(pos)==len(dists)!')
 
-    return names, pos, dists, electrodes_types
+    return names, pos, dists, np.array(electrodes_types)
+
+
+def read_electrodes_xls(subject, subject_elecs_dir, args):
+    rename_and_convert_electrodes_file(subject, subject_elecs_dir)
+    if not op.isfile(op.join(args.elecs_dir, '{}_RAS.csv'.format(subject))) and \
+            not op.isfile(op.join(subject_elecs_dir, '{}_RAS.csv'.format(subject))):
+        raise Exception('No coordinates csv file for {}!'.format(subject))
+    if not op.isfile(op.join(subject_elecs_dir, '{}_RAS.csv'.format(subject))):
+        shutil.copy(op.join(args.elecs_dir, '{}_RAS.csv'.format(subject)),
+                    op.join(subject_elecs_dir, '{}_RAS.csv'.format(subject)))
+    check_for_electrodes_coordinates_file(subject, args.subjects_dir, args.elecs_dir)
+    elec_file = op.join(args.elecs_dir, '{}.csv'.format(subject))
+    data = np.genfromtxt(elec_file, dtype=str, delimiter=args.csv_delimiter)
+    data = fix_str_items_in_csv(data)
+    return data
 
 
 def get_names_dists_non_bipolar(data):
@@ -948,6 +970,19 @@ def get_output_csv_fname(subject, bipolar, args):
         postfix=args.output_postfix)) + '.csv'
 
 
+def snap(subject, elecs_names, elecs_pos, elecs_types, subjects_dir):
+    grids_inds = np.where(elecs_types == GRID)[0]
+    if len(grids_inds) == 0:
+        return
+    groups_inds = defaultdict(list)
+    for grid_ind in grids_inds:
+        elec_group, elec_num = elec_group_number(elecs_names[grid_ind], False)
+        groups_inds[elec_group].append(grid_ind)
+    for elec_group, group_inds in groups_inds.items():
+        group_inds = np.array(group_inds)
+        snap_electrodes_to_surface(subject, elecs_pos[group_inds], elec_group, subjects_dir)
+
+
 def run_for_all_subjects(args):
     ok_subjects, bad_subjects = [], []
     results = defaultdict(dict)
@@ -964,23 +999,33 @@ def run_for_all_subjects(args):
         sftp_password = getpass.getpass('Please enter the sftp password for {}: '.format(args.sftp_username))
     else:
         sftp_password = ''
+    write_results = args.function != 'get_electrodes_types'
+    if args.function == 'get_electrodes_types':
+        args.bipolar = [False]
     for subject, bipolar in product(args.subject, args.bipolar):
-        print('****************** {} ******************'.format(subject))
-        logging.info('****************** {} bipolar {}, {}******************'.format(subject, bipolar, utils.now()))
         os.environ['SUBJECT'] = subject
         results_fname_csv = get_output_csv_fname(subject, bipolar, args)
         results_fname_pkl = results_fname_csv.replace('csv', 'pkl')
         try:
+            if args.function == 'get_electrodes_types':
+                electrodes_types_set = get_electrodes_types_set(subject, args)
+                print('{}: {}'.format(subject, electrodes_types_set))
+                continue
+            print('****************** {} ******************'.format(subject))
+            logging.info('****************** {} bipolar {}, {}******************'.format(subject, bipolar, utils.now()))
             if op.isfile(results_fname_pkl) and not args.overwrite:
                 elecs = utils.load(results_fname_pkl)
                 _, _, _, elecs_types = get_electrodes(subject, bipolar, args)
                 all_elecs_types[subject] = elecs_types
-            elif 'all' in args.function:
+            else:
                 check_for_necessary_files(subject, args, sftp_password)
                 check_for_annot_file(subject, args)
                 if args.only_check_files:
                     continue
                 elecs_names, elecs_pos, elecs_dists, elecs_types = get_electrodes(subject, bipolar, args)
+                if 'snap_grid_to_pial' in args.function:
+                    snap(subject, elecs_names, elecs_pos, elecs_types, args.subjects_dir)
+                    continue
                 all_elecs_types[subject] = elecs_types
                 elcs_ori = get_electrodes_orientation(
                     elecs_names, elecs_pos, bipolar, elecs_types, elecs_oris_fname=args.pos_fname)
@@ -1008,7 +1053,7 @@ def run_for_all_subjects(args):
             print(traceback.format_exc())
 
     # Write the results for all the subjects at once, to have a common labeling
-    if not op.isfile(results_fname_csv) or args.overwrite_csv:
+    if write_results and (not op.isfile(results_fname_csv) or args.overwrite_csv):
         write_results_to_csv(results, all_elecs_types, args)
 
     if ok_subjects:
@@ -1147,7 +1192,7 @@ def get_args(argv=None):
         'surf': ['rh.pial', 'lh.pial', 'rh.sphere.reg', 'lh.sphere.reg', 'lh.white', 'rh.white',
                  'lh.smoothwm', 'rh.smoothwm']}
         # 'electrodes': ['{subject}_RAS.csv']}
-    print(args)
+    # print(args)
     return args
 
 

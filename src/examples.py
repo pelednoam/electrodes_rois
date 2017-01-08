@@ -8,9 +8,9 @@ from src import args_utils as au
 def use_sftp(subject, args):
     argv = ['-s', subject, '--sftp', '1', '--sftp_username', 'npeled',
             '--sftp_domain', 'door.nmr.mgh.harvard.edu',
-            '--remote_subject_dir_template', '/autofs/cluster/neuromind/npeled/subjects/{subject}',
-            '--elecs_dir', '/home/noam/subjects/RAScoordinatessnapped',
-            '--write_compact_bipolar', '1', '--overwrite', '0']
+            '--remote_subject_dir', '/space/thibault/1/users/npeled/remote_subjects/{subject}',
+            '--write_compact_bipolar', '1', '--overwrite', '0',
+            '-f', 'snap_grid_to_pial']
     args = find_rois.get_args(argv)
     find_rois.run_for_all_subjects(args)
 

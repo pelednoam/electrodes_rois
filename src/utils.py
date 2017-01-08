@@ -110,8 +110,8 @@ def csv_from_excel(xlsx_fname, csv_fname, subject='', sheet_number=0):
             print('{}) {}'.format(k, sheet.name))
         sheet_number = int(input('Which one would you like to convert to csv (0,1,...)? '))
     sh = sheets[sheet_number]
-    if sh._dimncols > 4:
-        raise Exception('More than 4 cols in the sheet! {}'.format(sh._cell_values[0]))
+    # if sh._dimncols > 4:
+    #     raise Exception('More than 4 cols in the sheet! {}'.format(sh._cell_values[0]))
     print('Converting sheet "{}" to csv'.format(sh.name))
     try:
         with open(csv_fname, 'wb') as csv_file:
@@ -397,11 +397,11 @@ def sftp_copy_subject_files(subject, neccesary_files, username, domain, local_su
                     if not op.isfile(op.join(local_subject_dir, fol, file_name)):
                         with sftp.cd(op.join(remote_subject_dir, fol)):
                             sftp.get(file_name)
-                    if op.getsize(op.join(local_subject_dir, fol, file_name)) == 0:
-                        os.remove(op.join(local_subject_dir, fol, file_name))
                 except:
                     if print_traceback:
                         print(traceback.format_exc())
+                if op.getsize(op.join(local_subject_dir, fol, file_name)) == 0:
+                    os.remove(op.join(local_subject_dir, fol, file_name))
 
 
 def get_hemi_indifferent_rois(rois):
