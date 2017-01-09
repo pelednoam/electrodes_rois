@@ -357,7 +357,7 @@ def identify_roi_from_aparc(pos, elc_line, elc_length, lut, aseg_data, approx=4,
         _region_are_excluded = partial(fu.region_are_excluded, compiled_excludes=compiled_excludes)
         neighb = calc_neighbors(pos, elc_length + approx, dimensions)
         dists = np.min(cdist(elc_line, neighb), 0)
-        neighb = neighb[np.where(dists<approx)]
+        neighb = neighb[np.where(dists < approx)]
         regions = []
         for nei in neighb:
             nei_regions = set()
@@ -620,13 +620,17 @@ def write_results_to_csv(results, elecs_types, args):
         subcortical_rois_header = subcortical_rois
 
     for bipolar in results.keys():
+        electrodes_summation, labels_types = None, None
         for subject, elecs in results[bipolar].items():
             results_fname_csv = get_output_csv_fname(subject, bipolar, args)
-            write_values(elecs, elecs_types[subject], results_fname_csv,
-                ['electrode'] + cortical_rois + subcortical_rois_header + ['approx', 'elc_length'],
+            header = ['electrode'] + cortical_rois + subcortical_rois_header + ['approx', 'elc_length']
+            file_values = write_values(elecs, elecs_types[subject], results_fname_csv,header,
                 [cortical_rois, subcortical_rois],
                 ['cortical_rois','subcortical_rois'], ['cortical_probs', 'subcortical_probs'], args, bipolar)
-
+            if labels_types is None:
+                labels_types = np.array([0] * len(cortical_rois) + [1] * len(subcortical_rois))
+            electrodes_summation = np.mean(file_values, 0) if electrodes_summation is None else \
+                electrodes_summation + np.mean(file_values, 0)
             most_probable_rois_and_electrodes(subject, elecs, results_fname_csv, elecs_types, bipolar)
             if args.write_only_cortical:
                 write_values(elecs, elecs_types[subject], results_fname_csv.replace('electrodes', 'cortical_electrodes'),
@@ -638,8 +642,25 @@ def write_results_to_csv(results, elecs_types, args):
                     ['electrode']  + subcortical_rois_header, [subcortical_rois],
                     ['subcortical_rois'], ['subcortical_probs'], args, bipolar)
 
+        save_no_zeros_labels(results, bipolar, electrodes_summation, header, labels_types)
+
+
+def save_no_zeros_labels(results, bipolar, electrodes_summation, header, labels_types):
+    non_zero_indices = np.where(electrodes_summation > 0)[0]
+    header = np.array(header)[1:-2]
+    non_zero_header = header[non_zero_indices]
+    non_zeros_labels_types = labels_types[non_zero_indices]
+    non_zeros_rois = non_zero_header[non_zeros_labels_types == 0]
+    non_zeros_subs = non_zero_header[non_zeros_labels_types == 1]
+    subjects = sorted([str(name) for name in results[bipolar].keys()])
+    np.savetxt(op.join(get_electrodes_dir(), '{}_bipolar_{}_no_zero_rois.csv'.format('_'.join(subjects), bipolar)),
+               non_zeros_rois, fmt='%s')
+    np.savetxt(op.join(get_electrodes_dir(), '{}_bipolar_{}_no_zero_subs.csv'.format('_'.join(subjects),bipolar)),
+               non_zeros_subs, fmt='%s')
+
 
 def write_values(elecs, elecs_types, results_fname, header, rois_arr, rois_names, probs_names, args, bipolar=False):
+    file_data = []
     try:
         with open(results_fname, 'w') as fp:
             writer = csv.writer(fp, delimiter=',')
@@ -659,9 +680,12 @@ def write_values(elecs, elecs_types, results_fname, header, rois_arr, rois_names
                             values.append(0.)
                 values.extend([elc['approx'], elc['elc_length']])
                 writer.writerow(values)
+                file_data.append(values[1:-2])
     except:
         logging.error('write_values to {}: {}'.format(results_fname, traceback.format_exc()))
         print(traceback.format_exc())
+
+    return np.array(file_data).astype(np.float)
 
 
 def most_probable_rois_and_electrodes(subject, elecs, results_fname_csv, elecs_types, bipolar):
