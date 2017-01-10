@@ -615,6 +615,7 @@ def write_results_to_csv(results, elecs_types, args):
                 for elc in elecs:
                     cortical_rois.extend(elc['cortical_rois'])
                     subcortical_rois.extend(elc['subcortical_rois'])
+
         cortical_rois = list(np.unique(cortical_rois))
         subcortical_rois = list(np.unique(subcortical_rois))
         subcortical_rois_header = subcortical_rois
@@ -653,10 +654,10 @@ def save_no_zeros_labels(results, bipolar, electrodes_summation, header, labels_
     non_zeros_rois = non_zero_header[non_zeros_labels_types == 0]
     non_zeros_subs = non_zero_header[non_zeros_labels_types == 1]
     subjects = sorted([str(name) for name in results[bipolar].keys()])
-    np.savetxt(op.join(get_electrodes_dir(), '{}_bipolar_{}_no_zero_rois.csv'.format('_'.join(subjects), bipolar)),
-               non_zeros_rois, fmt='%s')
-    np.savetxt(op.join(get_electrodes_dir(), '{}_bipolar_{}_no_zero_subs.csv'.format('_'.join(subjects),bipolar)),
-               non_zeros_subs, fmt='%s')
+    np.savetxt(op.join(get_electrodes_dir(), '{}_{}no_zero_rois.csv'.format(
+        '_'.join(subjects), 'bipolar_' if bipolar else '')), non_zeros_rois, fmt='%s')
+    np.savetxt(op.join(get_electrodes_dir(), '{}_{}_no_zero_subs.csv'.format(
+        '_'.join(subjects), 'bipolar_' if bipolar else '')),non_zeros_subs, fmt='%s')
 
 
 def write_values(elecs, elecs_types, results_fname, header, rois_arr, rois_names, probs_names, args, bipolar=False):
@@ -676,6 +677,8 @@ def write_values(elecs, elecs_types, results_fname, header, rois_arr, rois_names
                         if roi in elc[rois_field]:
                             index = elc[rois_field].index(roi)
                             values.append(str(elc[prob_field][index]))
+                            # if roi == 'Left-choroid-plexus' and elc[prob_field][index] > 0:
+                            #     print('')
                         else:
                             values.append(0.)
                 values.extend([elc['approx'], elc['elc_length']])
