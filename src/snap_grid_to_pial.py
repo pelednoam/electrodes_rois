@@ -254,8 +254,8 @@ def snap_electrodes_to_surface(subject, elecs_pos, grid_name, subjects_dir,
         # elec.hemi = 'lh' if soln < len(lh_pia) else 'rh'
         snapped_electrodes_pial[ind] = pia[soln]
 
-    np.savez(op.join(subjects_dir, subject, 'electrodes', '{}_snap_electrodes'.format(grid_name)),
-             snapped_electrodes=snapped_electrodes, snapped_electrodes_pial=snapped_electrodes_pial)
+    output_fname = op.join(subjects_dir, subject, 'electrodes', '{}_snap_electrodes'.format(grid_name))
+    np.savez(output_fname, snapped_electrodes=snapped_electrodes, snapped_electrodes_pial=snapped_electrodes_pial)
     return snapped_electrodes, snapped_electrodes_pial
 
 

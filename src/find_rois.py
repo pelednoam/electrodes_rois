@@ -448,7 +448,7 @@ def grid_or_depth(data):
         else:
             for ind, elc_type in enumerate(data[:, 4]):
                 electrodes_types[ind] = GRID if elc_type in ['grid', 'strip'] else DEPTH
-            return np.array(electrodes_types)
+            return np.array(electrodes_types), data[:, 4]
 
     dists = defaultdict(list)
     group_type = {}
@@ -467,7 +467,7 @@ def grid_or_depth(data):
     for index in range(data.shape[0]):
         elc_group, _ = elec_group_number(data[index, 0])
         electrodes_types[index] = group_type[elc_group]
-    return np.array(electrodes_types)
+    return np.array(electrodes_types), None
 
 
 def get_electrodes_from_file(pos_fname, bipolar):
@@ -523,7 +523,7 @@ def get_electrodes(subject, bipolar, args):
         data = np.delete(data, (0), axis=0)
         print('First line in the electrodes RAS coordinates is a header')
 
-    electrodes_types = grid_or_depth(data)
+    electrodes_types, electrodes_types_names = grid_or_depth(data)
     # print([(n, elec_group_number(n), t) for n, t in zip(data[:, 0], electrodes_group_type)])
     if bipolar:
         depth_data = data[electrodes_types == DEPTH, :]
@@ -545,6 +545,9 @@ def get_electrodes(subject, bipolar, args):
         dists = np.concatenate((np.array(dists_depth), np.zeros((len(names_grid)))))
         pos = utils.vstack(pos_depth, pos_grid)
         electrodes_types = [DEPTH] * len(names_depth) + [GRID] * len(names_grid)
+        electrodes_types_names = ['depth'] * len(names_depth)
+        for name in names[len(names_depth):]:
+            electrodes_types_names.append(data[np.where(data[:, 0] == name)[0], -1][0])
     else:
         names, dists, pos = get_names_dists_non_bipolar(data)
     # names = np.array([name.strip() for name in names])
@@ -552,7 +555,7 @@ def get_electrodes(subject, bipolar, args):
         logging.error('get_electrodes ({}): not len(names)==len(pos)==len(dists)!'.format(subject))
         raise Exception('get_electrodes: not len(names)==len(pos)==len(dists)!')
 
-    return names, pos, dists, np.array(electrodes_types)
+    return names, pos, dists, np.array(electrodes_types), electrodes_types_names
 
 
 def read_electrodes_xls(subject, subject_elecs_dir, args):
@@ -1010,6 +1013,22 @@ def snap(subject, elecs_names, elecs_pos, elecs_types, subjects_dir):
         snap_electrodes_to_surface(subject, elecs_pos[group_inds], elec_group, subjects_dir)
 
 
+def read_snap_electrodes(subject, elecs_names, elecs_pos, elecs_types_names, subjects_dir):
+    snap_grids = glob.glob(op.join(subjects_dir, subject, 'electrodes', '*_snap_electrodes.npz'))
+    for snap_grid_fname in snap_grids:
+        grid_name = utils.namebase(snap_grid_fname).split('_')[0]
+        grid = np.load(snap_grid_fname)
+        grid_pos = grid['snapped_electrodes_pial']
+        elcs_inds = [elc_ind for elc_ind, elc_name in enumerate(elecs_names) if elc_name.startswith(grid_name) and \
+                     utils.is_int(elc_name[len(grid_name)])]
+        elecs_pos[elcs_inds] = grid_pos
+    with open(op.join(subjects_dir, subject, 'electrodes', '{}_snap_RAS.csv'.format(subject)), 'w') as csv_file:
+        csv_writer = csv.writer(csv_file, delimiter=',')
+        for elecs_name, elec_pos, elec_type in zip(elecs_names, elecs_pos, elecs_types_names):
+            csv_writer.writerow([elecs_name, *elec_pos, elec_type])
+    return elecs_pos
+
+
 def run_for_all_subjects(args):
     ok_subjects, bad_subjects = [], []
     results = defaultdict(dict)
@@ -1042,16 +1061,22 @@ def run_for_all_subjects(args):
             logging.info('****************** {} bipolar {}, {}******************'.format(subject, bipolar, utils.now()))
             if op.isfile(results_fname_pkl) and not args.overwrite:
                 elecs = utils.load(results_fname_pkl)
-                _, _, _, elecs_types = get_electrodes(subject, bipolar, args)
+                _, _, _, elecs_types, _ = get_electrodes(subject, bipolar, args)
                 all_elecs_types[subject] = elecs_types
             else:
                 check_for_necessary_files(subject, args, sftp_password)
                 check_for_annot_file(subject, args)
                 if args.only_check_files:
                     continue
-                elecs_names, elecs_pos, elecs_dists, elecs_types = get_electrodes(subject, bipolar, args)
+                elecs_names, elecs_pos, elecs_dists, elecs_types, elecs_types_names = get_electrodes(
+                    subject, bipolar, args)
                 if 'snap_grid_to_pial' in args.function:
                     snap(subject, elecs_names, elecs_pos, elecs_types, args.subjects_dir)
+                    continue
+                if 'read_snap_electrodes' in args.function:
+                    _elecs_names, _elecs_pos, _, _elecs_types, _elecs_types_names = get_electrodes(
+                        subject, False, args)
+                    read_snap_electrodes(subject, _elecs_names, _elecs_pos, _elecs_types_names, args.subjects_dir)
                     continue
                 all_elecs_types[subject] = elecs_types
                 elcs_ori = get_electrodes_orientation(

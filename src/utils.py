@@ -415,3 +415,11 @@ def get_hemi_indifferent_roi(roi):
         replace('Right.', '').replace('Left.', '').replace('.Right', '').replace('.Left', '').\
         replace('right-', '').replace('left-', '').replace('-right', '').replace('-left', '').\
         replace('right.', '').replace('left.', '').replace('.right', '').replace('.left', '')
+
+
+def is_int(s):
+    try:
+        int(s)
+        return True
+    except ValueError:
+        return False
