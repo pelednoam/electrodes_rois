@@ -559,6 +559,15 @@ def get_electrodes(subject, bipolar, args):
 
 
 def read_electrodes_xls(subject, subject_elecs_dir, args):
+    if args.snap:
+        elec_file = op.join(subject_elecs_dir, '{}_snap_RAS.csv'.format(subject))
+        if op.isfile(elec_file):
+            print('Reading snap RAS coordinates file')
+            data = np.genfromtxt(elec_file, dtype=str, delimiter=args.csv_delimiter)
+            return data
+        else:
+            print('snap is True but there is no snap csv file! {}'.format(elec_file))
+
     rename_and_convert_electrodes_file(subject, subject_elecs_dir)
     if not op.isfile(op.join(args.elecs_dir, '{}_RAS.csv'.format(subject))) and \
             not op.isfile(op.join(subject_elecs_dir, '{}_RAS.csv'.format(subject))):
@@ -1018,7 +1027,7 @@ def read_snap_electrodes(subject, elecs_names, elecs_pos, elecs_types_names, sub
     for snap_grid_fname in snap_grids:
         grid_name = utils.namebase(snap_grid_fname).split('_')[0]
         grid = np.load(snap_grid_fname)
-        grid_pos = grid['snapped_electrodes_pial']
+        grid_pos = grid['snapped_electrodes'] #''snapped_electrodes_pial']
         elcs_inds = [elc_ind for elc_ind, elc_name in enumerate(elecs_names) if elc_name.startswith(grid_name) and \
                      utils.is_int(elc_name[len(grid_name)])]
         elecs_pos[elcs_inds] = grid_pos
@@ -1196,6 +1205,7 @@ def get_args(argv=None):
     parser.add_argument('-b', '--bipolar', help='bipolar electrodes', required=False, default='1,0', type=au.bool_arr_type)
     parser.add_argument('--error_radius', help='error radius', required=False, default=3)
     parser.add_argument('--elc_length', help='elc length', required=False, default=4)
+    parser.add_argument('--snap', help='read electrodes snap RAS coordinates file', required=False, default=0, type=au.is_true)
     parser.add_argument('--n_jobs', help='cpu num', required=False, default=-1)
     parser.add_argument('--template_brain', help='template brain', required=False, default='fsaverage5c')
     parser.add_argument('--strech_to_dist', help='strech_to_dist', required=False, default=1, type=au.is_true)
