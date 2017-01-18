@@ -632,6 +632,10 @@ def write_results_to_csv(results, elecs_types, args):
         subcortical_rois = list(np.unique(subcortical_rois))
         subcortical_rois_header = subcortical_rois
 
+    if args.write_compact_subcorticals:
+        subcortical_rois = ['{}-lh'.format(sub_roi[len('Left-'):].lower()) if 'Left' in sub_roi else
+                            '{}-lh'.format(sub_roi[len('Right-'):].lower()) if 'Right' in sub_roi else
+                            sub_roi.lower() for sub_roi in subcortical_rois]
     for bipolar in results.keys():
         electrodes_summation, labels_types = None, None
         for subject, elecs in results[bipolar].items():
@@ -689,8 +693,6 @@ def write_values(elecs, elecs_types, results_fname, header, rois_arr, rois_names
                         if roi in elc[rois_field]:
                             index = elc[rois_field].index(roi)
                             values.append(str(elc[prob_field][index]))
-                            # if roi == 'Left-choroid-plexus' and elc[prob_field][index] > 0:
-                            #     print('')
                         else:
                             values.append(0.)
                 values.extend([elc['approx'], elc['elc_length']])
@@ -1069,6 +1071,7 @@ def run_for_all_subjects(args):
             print('****************** {} ******************'.format(subject))
             logging.info('****************** {} bipolar {}, {}******************'.format(subject, bipolar, utils.now()))
             if op.isfile(results_fname_pkl) and not args.overwrite:
+                print('Loading data file from {}'.format(results_fname_pkl))
                 elecs = utils.load(results_fname_pkl)
                 _, _, _, elecs_types, _ = get_electrodes(subject, bipolar, args)
                 all_elecs_types[subject] = elecs_types
@@ -1168,12 +1171,20 @@ def get_most_probable_roi(probs, rois, p_threshold):
         roi = probs_rois[0][1]
         prob = 1.0
     elif 'white' in probs_rois[0][1].lower():
-        if probs_rois[1][0] > p_threshold:
-            roi = probs_rois[1][1]
-            prob = probs_rois[1][0]
+        if 'white' in probs_rois[1][1].lower():
+            if len(probs_rois) > 2 and probs_rois[2][0] > p_threshold:
+                roi = probs_rois[2][1]
+                prob = probs_rois[2][0]
+            else:
+                roi = probs_rois[0][1]
+                prob = probs_rois[0][0]
         else:
-            roi = probs_rois[0][1]
-            prob = probs_rois[0][0]
+            if probs_rois[1][0] > p_threshold:
+                roi = probs_rois[1][1]
+                prob = probs_rois[1][0]
+            else:
+                roi = probs_rois[0][1]
+                prob = probs_rois[0][0]
     else:
         roi = probs_rois[0][1]
         prob = probs_rois[0][0]
@@ -1231,9 +1242,10 @@ def get_args(argv=None):
     parser.add_argument('--elecs_dir', help='electrodes positions folder', required=False, default='')
     parser.add_argument('--output_postfix', help='output_postfix', required=False, default='')
     parser.add_argument('--write_compact_bipolar', help='write x.23 instead x3-x2', required=False, default=0, type=au.is_true)
+    parser.add_argument('--write_compact_subcorticals', help='change subcorticals names as xxx-rh/lh', required=False, default=0, type=au.is_true)
     parser.add_argument('--csv_delimiter', help='ras csv delimiter', required=False, default=',')
     parser.add_argument('--excludes', help='excluded labels', required=False, type=au.str_arr_type,
-        default='Unknown,unknown,Cerebral-Cortex,corpuscallosum,WM-hypointensities,Ventricle,Inf-Lat-Vent,choroid-plexus')
+        default='Unknown,unknown,Cerebral-Cortex,corpuscallosum,WM-hypointensities,Ventricle,Inf-Lat-Vent,choroid-plexus,CC')
     parser.add_argument('--specific_elec', help='run on only one electrodes', required=False, default='')
     parser.add_argument('--sftp', help='copy subjects files over sftp', required=False, default=0, type=au.is_true)
     parser.add_argument('--sftp_username', help='sftp username', required=False, default='')
