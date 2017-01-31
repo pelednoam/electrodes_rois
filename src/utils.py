@@ -396,6 +396,7 @@ def sftp_copy_subject_files(subject, neccesary_files, username, domain, local_su
                 try:
                     if not op.isfile(op.join(local_subject_dir, fol, file_name)):
                         with sftp.cd(op.join(remote_subject_dir, fol)):
+                            print('sftp: getting {}'.format(file_name))
                             sftp.get(file_name)
                 except:
                     if print_traceback:

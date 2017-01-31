@@ -648,7 +648,7 @@ def write_results_to_csv(results, elecs_types, args):
                 labels_types = np.array([0] * len(cortical_rois) + [1] * len(subcortical_rois))
             electrodes_summation = np.mean(file_values, 0) if electrodes_summation is None else \
                 electrodes_summation + np.mean(file_values, 0)
-            most_probable_rois_and_electrodes(subject, elecs, results_fname_csv, elecs_types, bipolar)
+            most_probable_rois_and_electrodes(subject, elecs, results_fname_csv, elecs_types, bipolar, args)
             if args.write_only_cortical:
                 write_values(elecs, elecs_types[subject], results_fname_csv.replace('electrodes', 'cortical_electrodes'),
                              ['electrode'] + cortical_rois, [cortical_rois],['cortical_rois'], ['cortical_probs'],
@@ -705,7 +705,7 @@ def write_values(elecs, elecs_types, results_fname, header, rois_arr, rois_names
     return np.array(file_data).astype(np.float)
 
 
-def most_probable_rois_and_electrodes(subject, elecs, results_fname_csv, elecs_types, bipolar):
+def most_probable_rois_and_electrodes(subject, elecs, results_fname_csv, elecs_types, bipolar, args):
     mp_rois = get_most_probable_rois(elecs)  # Most probable ROIs for each electrode
     mp_roi_elec = OrderedDict()
     for mp_elec, mp_roi, mp_prob in mp_rois:
