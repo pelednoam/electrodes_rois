@@ -508,7 +508,7 @@ def get_electrodes(subject, bipolar, args):
         if f['bipolar'] != bipolar:
             raise_err('electrodes positions file was given, but its bipolarity is {} '.format(f['bipolar']) + \
                 'while you set the bipolarity to {}!'.format(bipolar))
-        return f['names'], f['pos'], f['dists'], f['electrodes_types']
+        return f['names'], f['pos'], f['dists'], f['electrodes_types'], None
 
     subject_elecs_dir = op.join(args.subjects_dir, subject, 'electrodes')
     utils.make_dir(subject_elecs_dir)
@@ -641,7 +641,7 @@ def write_results_to_csv(results, elecs_types, args):
         for subject, elecs in results[bipolar].items():
             results_fname_csv = get_output_csv_fname(subject, bipolar, args)
             header = ['electrode'] + cortical_rois + subcortical_rois_header + ['approx', 'elc_length']
-            file_values = write_values(elecs, elecs_types[subject], results_fname_csv,header,
+            file_values = write_values(elecs, elecs_types[subject], results_fname_csv, header,
                 [cortical_rois, subcortical_rois],
                 ['cortical_rois','subcortical_rois'], ['cortical_probs', 'subcortical_probs'], args, bipolar)
             if labels_types is None:
@@ -1080,15 +1080,15 @@ def run_for_all_subjects(args):
                 check_for_annot_file(subject, args)
                 if args.only_check_files:
                     continue
-                elecs_names, elecs_pos, elecs_dists, elecs_types, elecs_types_names = get_electrodes(
+                elecs_names, elecs_pos, elecs_dists, elecs_types, _ = get_electrodes(
                     subject, bipolar, args)
                 if 'snap_grid_to_pial' in args.function:
                     snap(subject, elecs_names, elecs_pos, elecs_types, args.subjects_dir)
                     continue
                 if 'read_snap_electrodes' in args.function:
-                    _elecs_names, _elecs_pos, _, _elecs_types, _elecs_types_names = get_electrodes(
+                    _elecs_names, _elecs_pos, _, _elecs_types, _ = get_electrodes(
                         subject, False, args)
-                    read_snap_electrodes(subject, _elecs_names, _elecs_pos, _elecs_types_names, args.subjects_dir)
+                    read_snap_electrodes(subject, _elecs_names, _elecs_pos, _, args.subjects_dir)
                     continue
                 all_elecs_types[subject] = elecs_types
                 elcs_ori = get_electrodes_orientation(
