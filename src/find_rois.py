@@ -467,6 +467,7 @@ def grid_or_depth(data):
     for index in range(data.shape[0]):
         elc_group, _ = elec_group_number(data[index, 0])
         electrodes_types[index] = group_type[elc_group]
+
     return np.array(electrodes_types), None
 
 
@@ -568,11 +569,17 @@ def read_electrodes_xls(subject, subject_elecs_dir, args):
         else:
             print('snap is True but there is no snap csv file! {}'.format(elec_file))
 
-    rename_and_convert_electrodes_file(subject, subject_elecs_dir)
-    if not op.isfile(op.join(args.elecs_dir, '{}_RAS.csv'.format(subject))) and \
-            not op.isfile(op.join(subject_elecs_dir, '{}_RAS.csv'.format(subject))):
+    file_exist = rename_and_convert_electrodes_file(subject, subject_elecs_dir)
+    if not file_exist:
+        mmvt_elecs_dir = op.join(args.mmvt_dir, subject, 'electrodes')
+        file_exist = rename_and_convert_electrodes_file(subject, mmvt_elecs_dir)
+        if file_exist:
+            shutil.copy(op.join(mmvt_elecs_dir, '{}_RAS.csv'.format(subject)),
+                        op.join(subject_elecs_dir, '{}_RAS.csv'.format(subject)))
+    if not op.isfile(op.join(args.elecs_dir, '{}_RAS.csv'.format(subject))) and not file_exist:
         raise Exception('No coordinates csv file for {}!'.format(subject))
-    if not op.isfile(op.join(subject_elecs_dir, '{}_RAS.csv'.format(subject))):
+    if not op.isfile(op.join(subject_elecs_dir, '{}_RAS.csv'.format(subject))) and op.isfile(
+            op.join(args.elecs_dir, '{}_RAS.csv'.format(subject))):
         shutil.copy(op.join(args.elecs_dir, '{}_RAS.csv'.format(subject)),
                     op.join(subject_elecs_dir, '{}_RAS.csv'.format(subject)))
     check_for_electrodes_coordinates_file(subject, args.subjects_dir, args.elecs_dir)
@@ -980,21 +987,13 @@ def rename_and_convert_electrodes_file(subject, electrodes_fol):
     files = [patt.format(subject=sub, postfix=post) for patt, sub, post in product(
         [subject_elec_fname_no_ras_pattern, subject_elec_fname_pattern], [subject, subject_upper], ['xls', 'xlsx'])]
     utils.rename_files(files, subject_elec_fname_xlsx)
-    # utils.rename_files([subject_elec_fname_no_ras_pattern.format(subject=subject, postfix='xlsx'),
-    #                     subject_elec_fname_no_ras_pattern.format(subject=subject_upper, postfix='xlsx'),
-    #                     subject_elec_fname_no_ras_pattern.format(subject=subject, postfix='xls'),
-    #                     subject_elec_fname_no_ras_pattern.format(subject=subject_upper, postfix='xls'),
-    #                     subject_elec_fname_pattern.format(subject=subject_upper, postfix='xlsx'),
-    #                     subject_elec_fname_pattern.format(subject=subject_upper, postfix='xls')],
-    #                    subject_elec_fname_xlsx)
     utils.rename_files([subject_elec_fname_pattern.format(subject=subject_upper, postfix='csv'),
                         subject_elec_fname_pattern.format(subject=subject, postfix='csv')],
                        subject_elec_fname_csv)
-    # utils.rename_files([subject_elec_fname_pattern.format(subject=subject.upper(), postfix='xlsx')],
-    #                    subject_elec_fname_xlsx)
     if op.isfile(subject_elec_fname_xlsx) and \
                     (not op.isfile(subject_elec_fname_csv) or op.getsize(subject_elec_fname_csv) == 0):
         utils.csv_from_excel(subject_elec_fname_xlsx, subject_elec_fname_csv, subject)
+    return op.isfile(subject_elec_fname_xlsx)
 
 
 def check_if_files_exist(args):
@@ -1154,6 +1153,7 @@ def remove_white_matter_and_normalize(elc):
 
 
 def get_most_probable_rois(elecs_probs, laterally=True, p_threshold=0):
+    elecs_probs = [elec for elec in elecs_probs if elec['name'] == 'LOF2-LOF1']
     probable_rois = [(elec['name'], *get_most_probable_roi([*elec['cortical_probs'], *elec['subcortical_probs']],
         [*elec['cortical_rois'], *elec['subcortical_rois']], p_threshold)) for elec in elecs_probs]
     if laterally:
