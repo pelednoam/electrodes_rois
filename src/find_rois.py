@@ -993,7 +993,7 @@ def rename_and_convert_electrodes_file(subject, electrodes_fol):
     if op.isfile(subject_elec_fname_xlsx) and \
                     (not op.isfile(subject_elec_fname_csv) or op.getsize(subject_elec_fname_csv) == 0):
         utils.csv_from_excel(subject_elec_fname_xlsx, subject_elec_fname_csv, subject)
-    return op.isfile(subject_elec_fname_xlsx)
+    return op.isfile(subject_elec_fname_csv)
 
 
 def check_if_files_exist(args):
