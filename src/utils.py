@@ -97,6 +97,10 @@ def get_subfolders(fol):
     return [os.path.join(fol,subfol) for subfol in os.listdir(fol) if os.path.isdir(os.path.join(fol,subfol))]
 
 
+def find_elec_num(elec_name):
+    return re.sub('\D', ',', elec_name).split(',')[-1]
+
+
 def csv_from_excel(xlsx_fname, csv_fname, subject='', sheet_number=0):
     import xlrd
     # import csv

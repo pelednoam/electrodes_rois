@@ -108,7 +108,7 @@ echo "mkoutersurf.py ${arg1} ${arg2} ${arg3}"
 echo "================="
 if ($RunIt) then
   pwd
-  python2 /home/npeled/code/electrodes_rois/src/mkoutersurf.py ${arg1} ${arg2} ${arg3}
+  python ~/space1/code/electrodes_rois/src/mkoutersurf.py ${arg1} ${arg2} ${arg3}
 endif
 echo ""
 if ( $RunIt && ! -e ${arg3} ) then

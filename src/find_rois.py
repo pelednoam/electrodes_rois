@@ -822,7 +822,7 @@ def elec_group_number(elec_name, bipolar=False):
         # ind = np.where([int(s.isdigit()) for s in elec_name])[-1][0]
         # num = int(elec_name[ind:])
         elec_name = elec_name.strip()
-        num = int(re.sub('\D', ',', elec_name).split(',')[-1])
+        num = int(utils.find_elec_num(elec_name))
         # group = elec_name[:ind]
         group = elec_name[:elec_name.rfind(str(num))]
         # print('name: {}, group: {}, num: {}'.format(elec_name, group, num))
@@ -1025,17 +1025,21 @@ def snap(subject, elecs_names, elecs_pos, elecs_types, subjects_dir):
 
 def read_snap_electrodes(subject, elecs_names, elecs_pos, elecs_types_names, subjects_dir):
     snap_grids = glob.glob(op.join(subjects_dir, subject, 'electrodes', '*_snap_electrodes.npz'))
+    if elecs_types_names is None:
+        elecs_types_names = [''] * len(elecs_names)
     for snap_grid_fname in snap_grids:
         grid_name = utils.namebase(snap_grid_fname).split('_')[0]
         grid = np.load(snap_grid_fname)
         grid_pos = grid['snapped_electrodes'] #''snapped_electrodes_pial']
         elcs_inds = [elc_ind for elc_ind, elc_name in enumerate(elecs_names) if elc_name.startswith(grid_name) and \
-                     utils.is_int(elc_name[len(grid_name)])]
+                     utils.is_int(utils.find_elec_num(elc_name))]
+        if len(elcs_inds) != grid_pos.shape[0]:
+            raise Exception('read_snap_electrodes: Wonrg number of snapped electrodes indices!')
         elecs_pos[elcs_inds] = grid_pos
     with open(op.join(subjects_dir, subject, 'electrodes', '{}_snap_RAS.csv'.format(subject)), 'w') as csv_file:
         csv_writer = csv.writer(csv_file, delimiter=',')
         for elecs_name, elec_pos, elec_type in zip(elecs_names, elecs_pos, elecs_types_names):
-            csv_writer.writerow([elecs_name, *elec_pos, elec_type])
+            csv_writer.writerow([elecs_name.replace('elec_unsorted', ''), *elec_pos, elec_type])
     return elecs_pos
 
 

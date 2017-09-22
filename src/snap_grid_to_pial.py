@@ -85,7 +85,7 @@ def snap_electrodes_to_surface(subject, elecs_pos, grid_name, subjects_dir,
     max = np.max(np.around(neighbor_dists))
     min = np.min(np.around(neighbor_dists))
 
-    hist, _ = np.histogram(neighbor_dists, bins=(max - min) / 2, range=(min, max))
+    hist, _ = np.histogram(neighbor_dists, bins=int((max - min) / 2), range=(min, max))
 
     fundist = np.argmax(hist) * 2 + min + 1
 
@@ -305,8 +305,8 @@ def create_dural_surface(subject, subjects_dir):
         # 1) Installing python2 (from anaconda), because of mcubes
         # 2) Installing mcubes usign pytohn2 (https://github.com/pmneila/PyMCubes)
         # 3) Open the termianl in the subjects_dir/subject/surf and run those commands:
-        #   a) /home/npeled/code/electrodes_rois/src/make_dural_surface.csh -i rh.pial
-        #   b) /home/npeled/code/electrodes_rois/src/make_dural_surface.csh -i lh.pial
+        #   a) ...code_path/electrodes_rois/src/make_dural_surface.csh -i rh.pial
+        #   b) ...code_path/electrodes_rois/src/make_dural_surface.csh -i lh.pial
 
         p = subprocess.call(make_dural_surface_cmd)
 
