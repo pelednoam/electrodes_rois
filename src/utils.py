@@ -428,3 +428,11 @@ def is_int(s):
         return True
     except ValueError:
         return False
+
+
+def is_float(x):
+    try:
+        float(x)
+        return True
+    except:
+        return False

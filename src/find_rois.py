@@ -604,9 +604,11 @@ def fix_str_items_in_csv(csv):
         if 'ref' in line[0].lower() or len(re.findall('\d', line[0])) == 0:
             continue
         fix_line = list(map(lambda x: str(x).replace('"', ''), line))
-        if not np.all([len(v) == 0 for v in fix_line[1:]]):
+        if not np.all([len(v) == 0 for v in fix_line[1:]]) and np.all([utils.is_float(x) for x in fix_line[1:]]):
             fix_line[0] = fix_line[0].strip()
             lines.append(fix_line)
+        else:
+            print('csv: ignoring the following line: {}'.format(line))
     return np.array(lines)
 
 
