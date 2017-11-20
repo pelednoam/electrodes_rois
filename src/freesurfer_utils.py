@@ -105,7 +105,7 @@ def get_subcortical_regions(excludes=[], output_fname='', input_fname='', extra=
          'LongFas', 'Bundle', 'Gyrus', 'Tract', 'Cornea', 'Diploe', 'Humor', 'Lens', 'Table',
          'Periosteum', 'Endosteum', 'R-C-S', 'Iris', 'IntCapsule', 'Interior', 'Skull', 'White', 'white',
          'fossa', 'Scalp', 'Hematoma', 'brainstem', 'DCG', 'SCP', 'Floculus', 'CblumNodulus',
-         'pathway', 'GC-DG', 'HATA', 'fimbria', 'ventricle', 'molecular', 'Cerebral_Cortex', 'Background',
+         'pathway', 'GC-DG', 'HATA', 'fimbria', 'ventricle', 'Ventricle', 'molecular', 'Cerebral_Cortex', 'Background',
          'Voxel-Unchanged', 'Head', 'Fluid', 'Sinus', 'Eustachian', 'V1', 'V2', 'BA', 'Aorta',
          'MT', 'Tumor', 'GrayMatter', 'SUSPICIOUS', 'fmajor', 'fminor', 'CC', 'LAntThalRadiation',
          'LUncinateFas', 'RAntThalRadiation', 'RUncinateFas', 'Vent', 'SLF', 'Cerebral-Exterior'])

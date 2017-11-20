@@ -403,9 +403,11 @@ def sftp_copy_subject_files(subject, neccesary_files, username, domain, local_su
                             print('sftp: getting {}'.format(file_name))
                             sftp.get(file_name)
                 except:
-                    if print_traceback:
-                        print(traceback.format_exc())
-                if op.getsize(op.join(local_subject_dir, fol, file_name)) == 0:
+                    print('sftp: error in getting {}!'.format(file_name))
+                    # if print_traceback:
+                    #     print(traceback.format_exc())
+                if op.isfile(op.join(local_subject_dir, fol, file_name)) and \
+                                op.getsize(op.join(local_subject_dir, fol, file_name)) == 0:
                     os.remove(op.join(local_subject_dir, fol, file_name))
 
 

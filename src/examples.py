@@ -34,6 +34,15 @@ def darpa_sftp(subject, args):
     find_rois.run_for_all_subjects(args)
 
 
+def sftp(subject, args):
+    argv = ['-s', subject, '-a', args.atlas,
+            '--sftp', '1', '--sftp_username', 'npeled',
+            '--sftp_domain', 'door.nmr.mgh.harvard.edu',
+            '--remote_subject_dir', '/autofs/space/thibault_001/users/npeled/subjects/{}'.format(subject)]
+    args = find_rois.get_args(argv)
+    find_rois.run_for_all_subjects(args)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Electrodes labeling')
     parser.add_argument('-s', '--subject', help='subject name', required=True, type=au.str_arr_type)
