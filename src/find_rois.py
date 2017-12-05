@@ -175,7 +175,8 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lu
     we_have_a_hit = False
     if strech_to_dist and bipolar and elc_length < elc_dist:
         elc_length = elc_dist
-    while not we_have_a_hit:
+    loop_ind = 0
+    while not we_have_a_hit and loop_ind < 10:
         if elc_type == GRID:
             regions, regions_hits = [], []
             # grow the area of surface surrounding the vertex
@@ -216,6 +217,7 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lu
             elif elc_type == GRID:
                 logging.warning('Grid electrode ({}) without a cortical hit?!?! Trying a bigger cigar'.format(elc_name))
             print('No hit! Recalculate with a bigger cigar')
+            loop_ind += 1
 
     elec_hemi_vertices_mask = hemi_verts_dists < approx
     hemi_vertices_indices = np.arange(len(pia_verts[hemi_str]))
@@ -955,7 +957,10 @@ def check_for_necessary_files(subject, args, sftp_password=''):
     all_files_exist = utils.prepare_local_subjects_folder(args.neccesary_files, subject, remote_subject_dir,
         args.subjects_dir, args, sftp_password, print_traceback=True)
     if not all_files_exist:
-        raise Exception('Not all files exist in the local subject folder!!!')
+        print('Not all files exist in the local subject folder!!!')
+        return False
+    else:
+        return True
     # prepare_local_subjects_folder(neccesary_files, subject, remote_subject_dir, subjects_dir,
     #     print_traceback=True)
 
@@ -1050,12 +1055,14 @@ def run_for_all_subjects(args):
     results = defaultdict(dict)
     all_elecs_types = {}
     logging.basicConfig(filename='log.log',level=logging.DEBUG)
-    for subject in args.subject:
-        rename_and_convert_electrodes_file(subject, op.join(args.subjects_dir, subject, 'electrodes'))
-        if not op.isfile(op.join(args.subjects_dir, subject, 'electrodes', '{}_RAS.csv'.format(subject))) and op.isfile(
-                op.join(get_electrodes_dir(), '{}.csv'.format(subject))):
-            shutil.copyfile(op.join(get_electrodes_dir(), '{}.csv'.format(subject)),
-                            op.join(args.subjects_dir, subject, 'electrodes', '{}_RAS.csv'.format(subject)))
+    if not args.only_check_files:
+        for subject in args.subject:
+            utils.make_dir(op.join(args.subjects_dir, subject, 'electrodes'))
+            rename_and_convert_electrodes_file(subject, op.join(args.subjects_dir, subject, 'electrodes'))
+            if not op.isfile(op.join(args.subjects_dir, subject, 'electrodes', '{}_RAS.csv'.format(subject))) and op.isfile(
+                    op.join(get_electrodes_dir(), '{}.csv'.format(subject))):
+                shutil.copyfile(op.join(get_electrodes_dir(), '{}.csv'.format(subject)),
+                                op.join(args.subjects_dir, subject, 'electrodes', '{}_RAS.csv'.format(subject)))
     all_files_exist = check_if_files_exist(args)
     if args.sftp and not all_files_exist:
         sftp_password = getpass.getpass('Please enter the sftp password for {}: '.format(args.sftp_username))
@@ -1081,7 +1088,10 @@ def run_for_all_subjects(args):
                 _, _, _, elecs_types, _ = get_electrodes(subject, bipolar, args)
                 all_elecs_types[subject] = elecs_types
             else:
-                check_for_necessary_files(subject, args, sftp_password)
+                all_files_exist = check_for_necessary_files(subject, args, sftp_password)
+                if not all_files_exist:
+                    bad_subjects.append(subject)
+                    continue
                 check_for_annot_file(subject, args)
                 if args.only_check_files:
                     continue
