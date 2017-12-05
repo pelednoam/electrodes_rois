@@ -146,7 +146,7 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lu
     '''
 
     if excludes is None:
-        excludes = ['Unknown', 'unknown', 'Cerebral-Cortex', 'corpuscallosum', 'WM-hypointensities']
+        excludes = ['Unknown', 'unknown', 'Cerebral-Cortex', 'corpuscallosum', 'WM-hypointensities', 'Ventricle']
     compiled_excludes = re.compile('|'.join(excludes))
     _region_are_excluded = partial(fu.region_are_excluded, compiled_excludes=compiled_excludes)
 
