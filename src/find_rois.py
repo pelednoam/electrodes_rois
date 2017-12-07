@@ -144,7 +144,6 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lu
         The string containing the name of the surface parcellation,
         does not apply to subcortical structures. If None, aparc is used.
     '''
-
     if excludes is None:
         excludes = ['Unknown', 'unknown', 'Cerebral-Cortex', 'corpuscallosum', 'WM-hypointensities', 'Ventricle']
     compiled_excludes = re.compile('|'.join(excludes))
@@ -299,9 +298,8 @@ def _read_labels_vertices(files_chunk):
 
 
 def electrode_is_only_in_white_matter(regions, subcortical_regions):
-    return len(regions) == 0 and len(subcortical_regions) == 1 and \
-        subcortical_regions[0] in ['{}-Cerebral-White-Matter'.format(hemi) \
-        for hemi in ['Right', 'Left']]
+    return len(regions) == 0 and \
+           len(set(subcortical_regions) - set(['Right-Cerebral-White-Matter', 'Left-Cerebral-White-Matter'])) == 0
 
 # def calc_hits_in_neighbors_from_line(line, points, neighb, approx):
 #     bins = [np.sort(np.unique(neighb[:, idim])) for idim in range(points.shape[1])]
@@ -606,7 +604,7 @@ def fix_str_items_in_csv(csv):
         if 'ref' in line[0].lower() or len(re.findall('\d', line[0])) == 0:
             continue
         fix_line = list(map(lambda x: str(x).replace('"', ''), line))
-        if not np.all([len(v) == 0 for v in fix_line[1:]]) and np.all([utils.is_float(x) for x in fix_line[1:]]):
+        if not np.all([len(v) == 0 for v in fix_line[1:]]) and np.all([utils.is_float(x) for x in fix_line[1:4]]):
             fix_line[0] = fix_line[0].strip()
             lines.append(fix_line)
         else:
@@ -1261,7 +1259,7 @@ def get_args(argv=None):
     parser.add_argument('--write_compact_subcorticals', help='change subcorticals names as xxx-rh/lh', required=False, default=0, type=au.is_true)
     parser.add_argument('--csv_delimiter', help='ras csv delimiter', required=False, default=',')
     parser.add_argument('--excludes', help='excluded labels', required=False, type=au.str_arr_type,
-        default='Unknown,unknown,Cerebral-Cortex,corpuscallosum,WM-hypointensities,Ventricle,Inf-Lat-Vent,choroid-plexus,CC')
+        default='Unknown,unknown,Cerebral-Cortex,corpuscallosum,WM-hypointensities,Ventricle,Inf-Lat-Vent,choroid-plexus,CC,CSF,VentralDC')
     parser.add_argument('--specific_elec', help='run on only one electrodes', required=False, default='')
     parser.add_argument('--sftp', help='copy subjects files over sftp', required=False, default=0, type=au.is_true)
     parser.add_argument('--sftp_username', help='sftp username', required=False, default='')
@@ -1281,6 +1279,7 @@ def get_args(argv=None):
         'mri': ['aseg.mgz'],
         'surf': ['rh.pial', 'lh.pial', 'rh.sphere.reg', 'lh.sphere.reg', 'lh.white', 'rh.white',
                  'lh.smoothwm', 'rh.smoothwm']}
+    fu.extend_subcorticals_excludes(args.excludes)
         # 'electrodes': ['{subject}_RAS.csv']}
     # print(args)
     return args

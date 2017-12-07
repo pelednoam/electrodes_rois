@@ -86,16 +86,7 @@ def import_freesurfer_lut(subjects_dir='', fs_lut=''):
     return lut
 
 
-def get_subcortical_regions(excludes=[], output_fname='', input_fname='', extra=[]):
-    if input_fname != '' and op.isfile(input_fname):
-        header_fname = '{0}_header{1}'.format(*os.path.splitext(input_fname))
-        if op.isfile(header_fname):
-            regions = utils.fix_bin_str_in_arr(np.genfromtxt(input_fname, dtype=None))
-            header = utils.fix_bin_str_in_arr(np.genfromtxt(header_fname, dtype=None))
-            return regions, header
-        else:
-            print("get_subcortical_regions: Can't find header file!")
-    regions, header = [], []
+def extend_subcorticals_excludes(excludes=[]):
     excludes.extend(['ctx', 'Line', 'CSF', 'Lesion', 'undetermined', 'vessel', 'F3orb', 'aOg', 'lOg', 'mOg', 'pOg',
          'Porg', 'Aorg', 'F1', 'Chiasm', 'Corpus_Callosum', 'WM', 'wm', 'Dura', 'Brain-Stem', 'abnormality',
          'Epidermis', 'Tissue', 'Muscle', 'Cranium', 'Ear', 'Adipose', 'Spinal', 'Nerve', 'Bone', 'unknown',
@@ -109,6 +100,20 @@ def get_subcortical_regions(excludes=[], output_fname='', input_fname='', extra=
          'Voxel-Unchanged', 'Head', 'Fluid', 'Sinus', 'Eustachian', 'V1', 'V2', 'BA', 'Aorta',
          'MT', 'Tumor', 'GrayMatter', 'SUSPICIOUS', 'fmajor', 'fminor', 'CC', 'LAntThalRadiation',
          'LUncinateFas', 'RAntThalRadiation', 'RUncinateFas', 'Vent', 'SLF', 'Cerebral-Exterior'])
+    return excludes
+
+
+def get_subcortical_regions(excludes=[], output_fname='', input_fname='', extra=[]):
+    if input_fname != '' and op.isfile(input_fname):
+        header_fname = '{0}_header{1}'.format(*os.path.splitext(input_fname))
+        if op.isfile(header_fname):
+            regions = utils.fix_bin_str_in_arr(np.genfromtxt(input_fname, dtype=None))
+            header = utils.fix_bin_str_in_arr(np.genfromtxt(header_fname, dtype=None))
+            return regions, header
+        else:
+            print("get_subcortical_regions: Can't find header file!")
+    regions, header = [], []
+    excludes = extend_subcorticals_excludes(excludes)
     lut = import_freesurfer_lut()
     compiled_excludes = re.compile('|'.join(excludes))
     _region_are_excluded = partial(region_are_excluded, compiled_excludes=compiled_excludes)
