@@ -1260,6 +1260,7 @@ def get_args(argv=None):
     parser.add_argument('--csv_delimiter', help='ras csv delimiter', required=False, default=',')
     parser.add_argument('--excludes', help='excluded labels', required=False, type=au.str_arr_type,
         default='Unknown,unknown,Cerebral-Cortex,corpuscallosum,WM-hypointensities,Ventricle,Inf-Lat-Vent,choroid-plexus,CC,CSF,VentralDC')
+    parser.add_argument('--exclude_white', help='', required=False, default=0, type=au.is_true)
     parser.add_argument('--specific_elec', help='run on only one electrodes', required=False, default='')
     parser.add_argument('--sftp', help='copy subjects files over sftp', required=False, default=0, type=au.is_true)
     parser.add_argument('--sftp_username', help='sftp username', required=False, default='')
@@ -1279,7 +1280,7 @@ def get_args(argv=None):
         'mri': ['aseg.mgz'],
         'surf': ['rh.pial', 'lh.pial', 'rh.sphere.reg', 'lh.sphere.reg', 'lh.white', 'rh.white',
                  'lh.smoothwm', 'rh.smoothwm']}
-    fu.extend_subcorticals_excludes(args.excludes)
+    fu.extend_subcorticals_excludes(args.excludes, include_white=args.exclude_white)
         # 'electrodes': ['{subject}_RAS.csv']}
     # print(args)
     return args
