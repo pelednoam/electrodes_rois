@@ -2,12 +2,16 @@
 import csv
 import glob
 import os
+import os.path as op
 import shutil
 
 import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.spatial.distance import cdist
+
+from src import utils
+
 
 SUBJECTS_DIR = '/homes/5/npeled/space3/subjects'
 COPY_FROM = '/homes/5/npeled/space3/Downloads/for_noam'
@@ -124,6 +128,43 @@ def compare_between_files(csv1, csv2):
                 print('diff in line {} col {}: {}, {}'.format(line_ind, col_ind, val1, val2))
 
 
+def find_subjects_with_electrodes_in(areas, areas_name, threshold=0):
+    files = glob.glob(op.join('../electrodes/*_aparc.DKTatlas40_electrodes_cigar_r_3_l_4.pkl'))
+    areas = [area.lower() for area in areas]
+    from collections import defaultdict
+    electrodes = defaultdict(list)
+    str = ''
+    subjects_num = 0
+    for fname in files:
+        subject = utils.namebase(fname).split('_')[0]
+        electrodes[subject] = defaultdict(list)
+        if not subject.lower().startswith('mg'):
+            continue
+        x = utils.load(fname)
+        elcs_str = ''
+        area_electrodes = 0
+        for elc in x:
+            for sub, prob in zip(elc['subcortical_rois'], elc['subcortical_probs']):
+                if any([area in sub.lower() for area in areas]) and prob > threshold:
+                    electrodes[subject][elc['name']].append((sub, prob))
+            if len(electrodes[subject][elc['name']]) == 0:
+                continue
+            area_electrodes += 1
+            elcs_str += '{}: {}, '.format(elc['name'], ','.join(['{} ({:.2f})'.format(sub, prob) for sub, prob in electrodes[subject][elc['name']]]))
+            # for sub, prob in electrodes[subject][elc['name']]:
+            #     elcs_str += '({}, {})'.format(sub, prob)
+        if area_electrodes == 0:
+            continue
+        subjects_num += 1
+        str += '{}, {} electrodes, {}\n'.format(subject, area_electrodes, elcs_str)
+
+    str = '{} subjects:\n{}'.format(subjects_num, str)
+    with open(op.join('..', 'electrodes', '{}.csv'.format(areas_name)), 'w') as file:
+        file.write(str)
+    print(str)
+
+
+
 if __name__ == '__main__':
     # copy_some_files()
     # electrodes_npz_to_csv('/homes/5/npeled/space3/subjects/mg79/electrodes/electrodes_positions.npz',
@@ -131,8 +172,10 @@ if __name__ == '__main__':
     # check_cigar(4, 2)
     # copy_some_files2()
     # check_labels('mg96', 'rh', 'laus250')
-    for subject in ['mg72','mg83','mg85','mg88']:
-        print('****** {} ******'.format(subject))
-        compare_between_files('/home/noam/code/electrodes_rois/electrodes/{}_aparc.DKTatlas40_electrodes_cigar_r_3_l_4_bipolar.csv'.format(subject),
-                          '/home/noam/Desktop/{}_aparc.DKTatlas40_electrodes_cigar_r_3_l_4_bipolar.csv'.format(subject))
+    # for subject in ['mg72','mg83','mg85','mg88']:
+    #     print('****** {} ******'.format(subject))
+    #     compare_between_files('/home/noam/code/electrodes_rois/electrodes/{}_aparc.DKTatlas40_electrodes_cigar_r_3_l_4_bipolar.csv'.format(subject),
+    #                       '/home/noam/Desktop/{}_aparc.DKTatlas40_electrodes_cigar_r_3_l_4_bipolar.csv'.format(subject))
+    striatal = ['basal-ganglia', 'basal-nucleus', 'pallidum', 'caudate', 'putamen']
+    find_subjects_with_electrodes_in(striatal, 'striatal', 0)
     print('finish!')
