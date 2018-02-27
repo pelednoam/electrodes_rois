@@ -144,14 +144,15 @@ def find_subjects_with_electrodes_in(areas, areas_name, threshold=0):
         elcs_str = ''
         area_electrodes = 0
         for elc in x:
+            elc_name = elc['name']
             for sub, prob in zip(elc['subcortical_rois'], elc['subcortical_probs']):
                 if any([area in sub.lower() for area in areas]) and prob > threshold:
-                    electrodes[subject][elc['name']].append((sub, prob))
-            if len(electrodes[subject][elc['name']]) == 0:
+                    electrodes[subject][elc_name].append((sub, prob))
+            if len(electrodes[subject][elc_name]) == 0:
                 continue
             area_electrodes += 1
-            elcs_str += '{}: {}, '.format(elc['name'], ','.join(['{} ({:.2f})'.format(sub, prob) for sub, prob in electrodes[subject][elc['name']]]))
-            # for sub, prob in electrodes[subject][elc['name']]:
+            elcs_str += '{}: {}, '.format(elc_name, ','.join(['{} ({:.2f})'.format(sub, prob) for sub, prob in electrodes[subject][elc_name]]))
+            # for sub, prob in electrodes[subject][elc_name]:
             #     elcs_str += '({}, {})'.format(sub, prob)
         if area_electrodes == 0:
             continue
