@@ -806,10 +806,14 @@ def get_electrodes_orientation(elecs_names, elecs_pos, bipolar, elecs_types, ele
                 else:
                     next_elc = '{}{}'.format(elc_group, elc_num-1)
                 ori = -1
-            next_elc_index = np.where(elecs_names==next_elc)[0][0]
-            next_elc_pos = elecs_pos[next_elc_index]
-            dist = np.linalg.norm(next_elc_pos-elc_pos)
-            elcs_oris[index] = ori * (next_elc_pos - elc_pos) / dist # norm(elc_ori)=1mm
+            if next_elc not in elecs_names:
+                print("{} doesn't seem to be depth, changing the type to grid".format(elc_name))
+                elecs_types[index] = GRID
+            else:
+                next_elc_index = np.where(elecs_names == next_elc)[0][0]
+                next_elc_pos = elecs_pos[next_elc_index]
+                dist = np.linalg.norm(next_elc_pos-elc_pos)
+                elcs_oris[index] = ori * (next_elc_pos - elc_pos) / dist # norm(elc_ori)=1mm
         # print(elc_name, elc_pos, next_elc, next_elc_pos, elc_line(1))
     return elcs_oris
 
