@@ -571,7 +571,7 @@ def read_electrodes_xls(subject, subject_elecs_dir, args):
 
     file_exist = rename_and_convert_electrodes_file(subject, subject_elecs_dir)
     if not file_exist:
-        mmvt_elecs_dir = op.join(args.mmvt_dir, subject, 'electrodes')
+        mmvt_elecs_dir = utils.make_dir(op.join(args.mmvt_dir, subject, 'electrodes'))
         file_exist = rename_and_convert_electrodes_file(subject, mmvt_elecs_dir)
         if file_exist:
             shutil.copy(op.join(mmvt_elecs_dir, '{}_RAS.csv'.format(subject)),
@@ -667,6 +667,12 @@ def write_results_to_csv(results, elecs_types, args):
                 write_values(elecs, elecs_types[subject], results_fname_csv.replace('electrodes', 'subcortical_electrodes'),
                     ['electrode']  + subcortical_rois_header, [subcortical_rois],
                     ['subcortical_rois'], ['subcortical_probs'], args, bipolar)
+
+            mmvt_csv_fname = op.join(args.mmvt_dir, subject, 'electrodes', op.basename(results_fname_csv))
+            if args.overwrite_mmvt and op.isfile(mmvt_csv_fname):
+                os.remove(mmvt_csv_fname)
+            if args.overwrite_mmvt or not op.isfile(mmvt_csv_fname):
+                shutil.copy(results_fname_csv, mmvt_csv_fname)
 
         save_no_zeros_labels(results, bipolar, electrodes_summation, header, labels_types)
 
@@ -1125,9 +1131,11 @@ def run_for_all_subjects(args):
             ok_subjects.append(subject)
             if op.isdir(args.mmvt_dir):
                 utils.make_dir(op.join(args.mmvt_dir, subject, 'electrodes'))
-                mmvt_fname = op.join(args.mmvt_dir, subject, 'electrodes', op.basename(results_fname_pkl))
-                if args.overwrite_mmvt or not op.isfile(mmvt_fname):
-                    shutil.copy(results_fname_pkl, mmvt_fname)
+                mmvt_pkl_fname = op.join(args.mmvt_dir, subject, 'electrodes', op.basename(results_fname_pkl))
+                if args.overwrite_mmvt and op.isfile(mmvt_pkl_fname):
+                    os.remove(mmvt_pkl_fname)
+                if args.overwrite_mmvt or not op.isfile(mmvt_pkl_fname):
+                    shutil.copy(results_fname_pkl, mmvt_pkl_fname)
         except:
             bad_subjects.append(subject)
             logging.error('{}: {}'.format(subject, traceback.format_exc()))
