@@ -459,7 +459,7 @@ def grid_or_depth(data):
             dists[elc_group1].append(np.linalg.norm(pos[index + 1] - pos[index]))
     for group, group_dists in dists.items():
         #todo: not sure this is the best way to check it. Strip with 1xN will be mistaken as a depth
-        if np.max(group_dists) > 2 * np.median(group_dists):
+        if np.max(group_dists) > 2 * np.percentile(group_dists, 25):
             group_type[group] = GRID
         else:
             group_type[group] = DEPTH
@@ -1108,7 +1108,7 @@ def run_for_all_subjects(args):
                 if 'snap_grid_to_pial' in args.function:
                     snap(subject, elecs_names, elecs_pos, elecs_types, args.subjects_dir)
                     continue
-                if 'read_snap_electrodes' in args.function:
+                if 'read_snap_electrodes' in args.function or 'snap_grid_to_pial' in args.function:
                     _elecs_names, _elecs_pos, _, _elecs_types, _ = get_electrodes(
                         subject, False, args)
                     read_snap_electrodes(subject, _elecs_names, _elecs_pos, _, args.subjects_dir)
