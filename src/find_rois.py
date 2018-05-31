@@ -1125,8 +1125,8 @@ def run_for_all_subjects(args):
                 if args.specific_elec != '':
                     continue
                 utils.save(elecs, results_fname_pkl)
-            if au.should_run('add_colors_to_probs', args):
-                add_colors_to_probs(subject, args.atlas, results_fname_pkl)
+            # if au.should_run('add_colors_to_probs', args):
+            #     add_colors_to_probs(subject, args.atlas, results_fname_pkl)
             results[bipolar][subject] = elecs
             ok_subjects.append(subject)
             if op.isdir(args.mmvt_dir):
@@ -1159,14 +1159,17 @@ def run_for_all_subjects(args):
 def add_colors_to_probs(subject, atlas, results_fname):
     # results_fname = op.join(get_electrodes_dir(), '{}_{}_electrodes{}.pkl'.format(
     #     subject, atlas, output_files_postfix))
-    if op.isfile(results_fname):
-        elecs = utils.load(results_fname)
-        for elc in elecs:
-            elc['subcortical_colors'] = cu.arr_to_colors(elc['subcortical_probs'], colors_map='YlOrRd')
-            elc['cortical_colors'] = cu.arr_to_colors(elc['cortical_probs'], colors_map='YlOrRd')
-        utils.save(elecs, results_fname)
-    else:
-        print("!!! Can't find the probabilities file !!!")
+    try:
+        if op.isfile(results_fname):
+            elecs = utils.load(results_fname)
+            for elc in elecs:
+                elc['subcortical_colors'] = cu.arr_to_colors(elc['subcortical_probs'], colors_map='YlOrRd')
+                elc['cortical_colors'] = cu.arr_to_colors(elc['cortical_probs'], colors_map='YlOrRd')
+            utils.save(elecs, results_fname)
+        else:
+            print("!!! Can't find the probabilities file !!!")
+    except:
+        print("Can't calc probs colors!")
 
 
 def remove_white_matter_and_normalize(elc):
