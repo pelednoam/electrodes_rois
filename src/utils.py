@@ -16,21 +16,44 @@ except:
     import pickle
 
 
+# def get_link_dir(links_dir, link_name, var_name='', default_val='', throw_exception=False):
+#     val = os.path.join(links_dir, link_name)
+#     # check if this is a windows folder shortcup
+#     if os.path.isfile('{}.lnk'.format(val)):
+#         val = read_windows_dir_shortcut('{}.lnk'.format(val))
+#     if not os.path.isdir(val) and default_val != '':
+#         val = default_val
+#     if not os.path.isdir(val):
+#         val = os.environ.get(var_name, '')
+#     if not os.path.isdir(val):
+#         if throw_exception:
+#             raise Exception('No {} dir!'.format(link_name))
+#         else:
+#             print('No {} dir!'.format(link_name))
+#     return val
+
+
 def get_link_dir(links_dir, link_name, var_name='', default_val='', throw_exception=False):
-    val = os.path.join(links_dir, link_name)
+    link = op.join(links_dir, link_name)
     # check if this is a windows folder shortcup
-    if os.path.isfile('{}.lnk'.format(val)):
-        val = read_windows_dir_shortcut('{}.lnk'.format(val))
-    if not os.path.isdir(val) and default_val != '':
-        val = default_val
-    if not os.path.isdir(val):
-        val = os.environ.get(var_name, '')
-    if not os.path.isdir(val):
-        if throw_exception:
-            raise Exception('No {} dir!'.format(link_name))
-        else:
-            print('No {} dir!'.format(link_name))
-    return val
+    if op.isfile('{}.lnk'.format(link)):
+        from src.mmvt_addon.scripts import windows_utils as wu
+        sc = wu.MSShortcut('{}.lnk'.format(link))
+        return op.join(sc.localBasePath, sc.commonPathSuffix)
+        # return read_windows_dir_shortcut('{}.lnk'.format(val))
+    ret = op.realpath(link)
+    if not op.isdir(ret) and default_val != '':
+        ret = default_val
+    if not op.isdir(ret):
+        ret = os.environ.get(var_name, '')
+    if not op.isdir(ret):
+        ret = get_link_dir_from_csv(links_dir, link_name)
+        if ret == '':
+            if throw_exception:
+                raise Exception('No {} dir!'.format(link_name))
+            else:
+                print('No {} dir!'.format(link_name))
+    return ret
 
 
 def get_links_dir():
