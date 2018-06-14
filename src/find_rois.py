@@ -68,7 +68,7 @@ def identify_roi_from_atlas(atlas, labels, elecs_names, elecs_pos, elecs_ori=Non
             logging.error('!!!!! No subcortical labels !!!!!')
             aseg_data = None
 
-    lut = fu.import_freesurfer_lut(subjects_dir, lut_fname)
+    lut = fu.import_freesurfer_lut(lut_fname)
 
     # load the surfaces and annotation
     # uses the pial surface, this change is pushed to MNE python

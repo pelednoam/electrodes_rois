@@ -9,6 +9,7 @@ from src import utils
 
 mris_ca_label = 'mris_ca_label {subject} {hemi} sphere.reg {freesurfer_home}/average/{hemi}.{atlas_type}.gcs {subjects_dir}/{subject}/label/{hemi}.{atlas}.annot -orig white'
 
+
 def create_freesurfer_annotation_file(subject, atlas, subjects_dir='', freesurfer_home='', overwrite_annot_file=True, print_only=False):
     '''
     Creates the annot file by using the freesurfer mris_ca_label function
@@ -40,13 +41,15 @@ def create_freesurfer_annotation_file(subject, atlas, subjects_dir='', freesurfe
         annot_fname = op.join(subjects_dir, subject, 'label', '{}.{}.annot'.format(hemi, atlas))
         if overwrite_annot_file and op.isfile(annot_fname):
             os.remove(annot_fname)
+        if os.environ.get('FREESURFER_HOME', '') == '':
+            raise Exception('You have to source FreeSurfer first')
         rs = utils.partial_run_script(locals(), print_only=print_only)
         rs(mris_ca_label)
         annot_files_exist = annot_files_exist and op.isfile(annot_fname)
     return annot_files_exist
 
 
-def import_freesurfer_lut(subjects_dir='', fs_lut=''):
+def import_freesurfer_lut(fs_lut=''):
     """
     Import Look-up Table with colors and labels for anatomical regions.
     It's necessary that Freesurfer is installed and that the environmental
@@ -54,8 +57,6 @@ def import_freesurfer_lut(subjects_dir='', fs_lut=''):
 
     Parameters
     ----------
-    subjects_dir : str
-        path to the subjects dir
     fs_lut : str
         path to file called FreeSurferColorLUT.txt
 
@@ -69,15 +70,16 @@ def import_freesurfer_lut(subjects_dir='', fs_lut=''):
         one row is a brain region and the columns are the RGBA colors
     """
     if fs_lut == '':
-        try:
-            fs_home = os.environ['FREESURFER_HOME']
-        except KeyError:
-            raise OSError('FREESURFER_HOME not found')
-        else:
-            if fs_home != '':
-                fs_lut = op.join(fs_home, 'FreeSurferColorLUT.txt')
-            else:
-                fs_lut = op.join(subjects_dir, 'FreeSurferColorLUT.txt')
+        fs_lut = op.join(utils.get_resources_fol(), 'FreeSurferColorLUT.txt')
+    #     try:
+    #         fs_home = os.environ['FREESURFER_HOME']
+    #     except KeyError:
+    #         raise OSError('FREESURFER_HOME not found')
+    #     else:
+    #         if fs_home != '':
+    #             fs_lut = op.join(fs_home, 'FreeSurferColorLUT.txt')
+    #         else:
+    #             fs_lut = op.join(subjects_dir, 'FreeSurferColorLUT.txt')
 
     idx = np.genfromtxt(fs_lut, dtype=None, usecols=(0))
     label = utils.fix_bin_str_in_arr(np.genfromtxt(fs_lut, dtype=None, usecols=(1)))
