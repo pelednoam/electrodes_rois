@@ -5,12 +5,17 @@ import os
 import os.path as op
 import shutil
 
-import matplotlib.pyplot as plt
 import numpy as np
-from mpl_toolkits.mplot3d import Axes3D
 from scipy.spatial.distance import cdist
 
 from src import utils
+
+
+try:
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d import Axes3D
+except:
+    print('No matplotlib!')
 
 
 SUBJECTS_DIR = '/homes/5/npeled/space3/subjects'

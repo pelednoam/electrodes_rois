@@ -1,8 +1,10 @@
 import numpy as np
-import matplotlib.colors
-import matplotlib.pyplot as plt
-import matplotlib.cm as cmx
-
+try:
+    import matplotlib.colors
+    import matplotlib.pyplot as plt
+    import matplotlib.cm as cmx
+except:
+    print('No matplotlib')
 
 def arr_to_colors(x, x_min=None, x_max=None, colors_map='jet', scalar_map=None):
     if len(x) == 0:

@@ -68,7 +68,7 @@ def identify_roi_from_atlas(atlas, labels, elecs_names, elecs_pos, elecs_ori=Non
             logging.error('!!!!! No subcortical labels !!!!!')
             aseg_data = None
 
-    lut = fu.import_freesurfer_lut(subjects_dir, lut_fname)
+    lut = fu.import_freesurfer_lut(lut_fname)
 
     # load the surfaces and annotation
     # uses the pial surface, this change is pushed to MNE python
@@ -459,7 +459,7 @@ def grid_or_depth(data):
             dists[elc_group1].append(np.linalg.norm(pos[index + 1] - pos[index]))
     for group, group_dists in dists.items():
         #todo: not sure this is the best way to check it. Strip with 1xN will be mistaken as a depth
-        if np.max(group_dists) > 2 * np.median(group_dists):
+        if np.max(group_dists) > 2 * np.percentile(group_dists, 25):
             group_type[group] = GRID
         else:
             group_type[group] = DEPTH
@@ -1108,7 +1108,7 @@ def run_for_all_subjects(args):
                 if 'snap_grid_to_pial' in args.function:
                     snap(subject, elecs_names, elecs_pos, elecs_types, args.subjects_dir)
                     continue
-                if 'read_snap_electrodes' in args.function:
+                if 'read_snap_electrodes' in args.function or 'snap_grid_to_pial' in args.function:
                     _elecs_names, _elecs_pos, _, _elecs_types, _ = get_electrodes(
                         subject, False, args)
                     read_snap_electrodes(subject, _elecs_names, _elecs_pos, _, args.subjects_dir)
@@ -1125,8 +1125,8 @@ def run_for_all_subjects(args):
                 if args.specific_elec != '':
                     continue
                 utils.save(elecs, results_fname_pkl)
-            if au.should_run('add_colors_to_probs', args):
-                add_colors_to_probs(subject, args.atlas, results_fname_pkl)
+            # if au.should_run('add_colors_to_probs', args):
+            #     add_colors_to_probs(subject, args.atlas, results_fname_pkl)
             results[bipolar][subject] = elecs
             ok_subjects.append(subject)
             if op.isdir(args.mmvt_dir):
@@ -1159,14 +1159,17 @@ def run_for_all_subjects(args):
 def add_colors_to_probs(subject, atlas, results_fname):
     # results_fname = op.join(get_electrodes_dir(), '{}_{}_electrodes{}.pkl'.format(
     #     subject, atlas, output_files_postfix))
-    if op.isfile(results_fname):
-        elecs = utils.load(results_fname)
-        for elc in elecs:
-            elc['subcortical_colors'] = cu.arr_to_colors(elc['subcortical_probs'], colors_map='YlOrRd')
-            elc['cortical_colors'] = cu.arr_to_colors(elc['cortical_probs'], colors_map='YlOrRd')
-        utils.save(elecs, results_fname)
-    else:
-        print("!!! Can't find the probabilities file !!!")
+    try:
+        if op.isfile(results_fname):
+            elecs = utils.load(results_fname)
+            for elc in elecs:
+                elc['subcortical_colors'] = cu.arr_to_colors(elc['subcortical_probs'], colors_map='YlOrRd')
+                elc['cortical_colors'] = cu.arr_to_colors(elc['cortical_probs'], colors_map='YlOrRd')
+            utils.save(elecs, results_fname)
+        else:
+            print("!!! Can't find the probabilities file !!!")
+    except:
+        print("Can't calc probs colors!")
 
 
 def remove_white_matter_and_normalize(elc):

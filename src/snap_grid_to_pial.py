@@ -3,6 +3,7 @@ import os
 import os.path as op
 import nibabel as nib
 
+
 def snap_electrodes_to_surface(subject, elecs_pos, grid_name, subjects_dir,
                                max_steps=40000, giveup_steps=10000,
                                init_temp=1e-3, temperature_exponent=1,
@@ -256,6 +257,7 @@ def snap_electrodes_to_surface(subject, elecs_pos, grid_name, subjects_dir,
 
     output_fname = op.join(subjects_dir, subject, 'electrodes', '{}_snap_electrodes'.format(grid_name))
     np.savez(output_fname, snapped_electrodes=snapped_electrodes, snapped_electrodes_pial=snapped_electrodes_pial)
+    print('The snap electrodes were saved to {}'.format(output_fname))
     return snapped_electrodes, snapped_electrodes_pial
 
 
