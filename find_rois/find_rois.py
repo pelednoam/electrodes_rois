@@ -18,12 +18,12 @@ import numpy as np
 from mne.surface import read_surface
 from scipy.spatial.distance import cdist
 
-from src import args_utils as au
-from src import colors_utils as cu
-from src import freesurfer_utils as fu
-from src import labels_utils as lu
-from src import utils
-from src.snap_grid_to_pial import snap_electrodes_to_surface
+from find_rois import args_utils as au
+from find_rois import colors_utils as cu
+from find_rois import freesurfer_utils as fu
+from find_rois import labels_utils as lu
+from find_rois import utils
+from find_rois.snap_grid_to_pial import snap_electrodes_to_surface
 
 LINKS_DIR = utils.get_links_dir()
 ELECTRODES_TYPES = ('depth', 'grid', 'strip', 'microgrid', 'neuroport')

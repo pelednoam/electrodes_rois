@@ -5,7 +5,7 @@ from functools import partial
 
 import numpy as np
 
-from src import utils
+from find_rois import utils
 
 mris_ca_label = 'mris_ca_label {subject} {hemi} sphere.reg {freesurfer_home}/average/{hemi}.{atlas_type}.gcs {subjects_dir}/{subject}/label/{hemi}.{atlas}.annot -orig white'
 

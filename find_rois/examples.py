@@ -1,8 +1,8 @@
 import argparse
 
-from src import find_rois
-from src import utils
-from src import args_utils as au
+from find_rois import find_rois
+from find_rois import utils
+from find_rois import args_utils as au
 
 # 'mg72,mg76,mg83,mg85,mg88'
 def snap_grid_to_pial_use_sftp(subject, args):

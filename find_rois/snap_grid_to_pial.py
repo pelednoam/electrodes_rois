@@ -307,8 +307,8 @@ def create_dural_surface(subject, subjects_dir):
         # 1) Installing python2 (from anaconda), because of mcubes
         # 2) Installing mcubes usign pytohn2 (https://github.com/pmneila/PyMCubes)
         # 3) Open the termianl in the subjects_dir/subject/surf and run those commands:
-        #   a) ...code_path/electrodes_rois/src/make_dural_surface.csh -i rh.pial
-        #   b) ...code_path/electrodes_rois/src/make_dural_surface.csh -i lh.pial
+        #   a) ...code_path/electrodes_rois/find_rois/make_dural_surface.csh -i rh.pial
+        #   b) ...code_path/electrodes_rois/find_rois/make_dural_surface.csh -i lh.pial
 
         p = subprocess.call(make_dural_surface_cmd)
 
