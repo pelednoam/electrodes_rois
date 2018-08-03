@@ -826,7 +826,7 @@ def get_electrodes_orientation(elecs_names, elecs_pos, bipolar, elecs_types, ele
 
 def elec_group_number(elec_name, bipolar=False):
     if bipolar:
-        elec_name2, elec_name1 = elec_name.split('-')
+        elec_name2, elec_name1 = utils.split_bipolar_name(elec_name)
         group, num1 = elec_group_number(elec_name1, False)
         _, num2 = elec_group_number(elec_name2, False)
         return group, num1, num2

@@ -491,3 +491,12 @@ def is_float(x):
         return True
     except:
         return False
+
+
+def split_bipolar_name(elec_name):
+    splits = elec_name.split('-')
+    if len(splits) == 2:
+        elec_name2, elec_name1 = splits
+    elif len(splits) == 4:
+        elec_name2, elec_name1 = '-'.join(splits[:2]), '-'.join(splits[2:4])
+    return elec_name1, elec_name2
