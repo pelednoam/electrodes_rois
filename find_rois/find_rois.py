@@ -215,7 +215,7 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lu
                 elc_length += 1
             elif elc_type == GRID:
                 logging.warning('Grid electrode ({}) without a cortical hit?!?! Trying a bigger cigar'.format(elc_name))
-            print('{}: No hit! Recalculate with a bigger cigar'.format(elc_name))
+            print('{}: No hit! Recalculate with a bigger cigar ({})'.format(elc_name, loop_ind))
             loop_ind += 1
 
     elec_hemi_vertices_mask = hemi_verts_dists < approx
