@@ -801,20 +801,28 @@ def get_electrodes_orientation(elecs_names, elecs_pos, bipolar, elecs_types, ele
         if elecs_types[index] == DEPTH:
             if bipolar:
                 elc_group, elc_num1, elc_num2 = elec_group_number(elc_name, True)
-                next_elc = '{}{}-{}{}'.format(elc_group, elc_num2 + 1, elc_group, elc_num1 + 1)
+                if elc_num2 > elc_num1:
+                    next_elc = '{}{}-{}{}'.format(elc_group, elc_num2 + 1, elc_group, elc_num1 + 1)
+                else:
+                    next_elc = '{}{}-{}{}'.format(elc_group, elc_num1 + 1, elc_group, elc_num2 + 1)
             else:
                 elc_group, elc_num = elec_group_number(elc_name)
                 next_elc = '{}{}'.format(elc_group, elc_num+1)
             ori = 1
             if next_elc not in elecs_names:
                 if bipolar:
-                    next_elc = '{}{}-{}{}'.format(elc_group, elc_num1, elc_group, elc_num1-1)
+                    if elc_num2 > elc_num1:
+                        next_elc = '{}{}-{}{}'.format(elc_group, elc_num2 - 1, elc_group, elc_num1 - 1)
+                    else:
+                        next_elc = '{}{}-{}{}'.format(elc_group, elc_num1 - 1, elc_group, elc_num2 - 1)
                 else:
-                    next_elc = '{}{}'.format(elc_group, elc_num-1)
+                    next_elc = '{}{}'.format(elc_group, elc_num - 1)
                 ori = -1
             if next_elc not in elecs_names:
                 print("{} doesn't seem to be depth, changing the type to grid".format(elc_name))
                 elecs_types[index] = GRID
+            elif next_elc == elc_name:
+                raise Exception('next_elc ({}) == elc_name ({}) !!!'.format(elc_name, next_elc))
             else:
                 next_elc_index = np.where(elecs_names == next_elc)[0][0]
                 next_elc_pos = elecs_pos[next_elc_index]
