@@ -464,6 +464,7 @@ def grid_or_depth(data):
         else:
             group_type[group] = DEPTH
         print('group {} is {}'.format(group, 'grid' if group_type[group] == GRID else 'depth'))
+    print('groups types: {}'.format(group_type.keys()))
     for index in range(data.shape[0]):
         elc_group, _ = elec_group_number(data[index, 0])
         electrodes_types[index] = group_type[elc_group]
