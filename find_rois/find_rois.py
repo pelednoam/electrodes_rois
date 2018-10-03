@@ -439,9 +439,16 @@ def calc_neighbors(pos, approx=None, dimensions=None, calc_bins=False):
     return pos + neighb
 
 
-def grid_or_depth(data):
+def grid_or_depth(data, electrods_type=None):
     pos = data[:, 1:4].astype(float)
     electrodes_types = [None] * pos.shape[0]
+
+    if electrods_type is not None:
+        print('All the electrodes are {}'.format('grid' if electrods_type == GRID else 'depth'))
+        for index in range(data.shape[0]):
+            electrodes_types[index] = electrods_type
+        return np.array(electrodes_types), None
+
     if data.shape[1] > 4:
         if len(set(data[:, 4]) - set(ELECTRODES_TYPES)) > 0:
             raise Exception('In column 5 the only permitted values are {}'.format(ELECTRODES_TYPES))
@@ -524,7 +531,7 @@ def get_electrodes(subject, bipolar, args):
         data = np.delete(data, (0), axis=0)
         print('First line in the electrodes RAS coordinates is a header')
 
-    electrodes_types, electrodes_types_names = grid_or_depth(data)
+    electrodes_types, electrodes_types_names = grid_or_depth(data, args.electrodes_type)
     # print([(n, elec_group_number(n), t) for n, t in zip(data[:, 0], electrodes_group_type)])
     if bipolar:
         depth_data = data[electrodes_types == DEPTH, :]
@@ -1288,6 +1295,8 @@ def get_args(argv=None):
     parser.add_argument('--sftp', help='copy subjects files over sftp', required=False, default=0, type=au.is_true)
     parser.add_argument('--sftp_username', help='sftp username', required=False, default='')
     parser.add_argument('--sftp_domain', help='sftp domain', required=False, default='')
+    parser.add_argument('--electrodes_type', help='', required=False, default=None)
+
 
     args = utils.Bag(au.parse_parser(parser, argv))
     args.n_jobs = utils.get_n_jobs(args.n_jobs)
