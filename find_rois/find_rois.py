@@ -34,7 +34,8 @@ EXISTING_FREESURFER_ANNOTATIONS = ['aparc.DKTatlas40.annot', 'aparc.annot', 'apa
 def identify_roi_from_atlas(atlas, labels, elecs_names, elecs_pos, elecs_ori=None, approx=4, elc_length=1,
                             elecs_dists=None, elecs_types=None, strech_to_dist=False, enlarge_if_no_hit=False,
                             bipolar=False, subjects_dir=None, subject=None, excludes=None,
-                            specific_elec='', nei_dimensions=None, aseg_atlas=True, n_jobs=6):
+                            specific_elec='', nei_dimensions=None, aseg_atlas=True, aseg_data=None, lut=None,
+                            pia_verts=None, n_jobs=6):
 
     if subjects_dir is None or subjects_dir == '':
         subjects_dir = os.environ['SUBJECTS_DIR']
@@ -42,40 +43,43 @@ def identify_roi_from_atlas(atlas, labels, elecs_names, elecs_pos, elecs_ori=Non
         subject = os.environ['SUBJECT']
 
     # get the segmentation file
-    aseg_fname = op.join(subjects_dir, subject, 'mri', 'aseg.mgz')
-    asegf = aseg_fname
-    aseg_atlas_fname = op.join(subjects_dir, subject, 'mri', '{}+aseg.mgz'.format(atlas))
-    lut_atlast_fname = op.join(subjects_dir, subject, 'mri', '{}ColorLUT.txt'.format(atlas))
-    lut_fname = ''
-    if aseg_atlas:
-        if op.isfile(aseg_atlas_fname) and op.isfile(lut_atlast_fname):
-            asegf = aseg_atlas_fname
-            lut_fname = lut_atlast_fname
-        else:
-            logging.warning("{} doesnot exist!".format(aseg_atlas_fname))
-    if not op.isfile(asegf):
-        asegf = op.join(subjects_dir, subject, 'mri', 'aparc+aseg.mgz')
-    try:
-        aseg = nib.load(asegf)
-        aseg_data = aseg.get_data()
-        # np.save(op.join(subjects_dir, subject, 'mri', 'aseg.npy'), aseg_data)
-    except:
-        backup_aseg_file = op.join(subjects_dir, subject, 'mri', 'aseg.npy')
-        if op.isfile(backup_aseg_file):
-            aseg_data = np.load(backup_aseg_file)
-        else:
-            logging.error('!!!!! Error in loading aseg file !!!!! ')
-            logging.error('!!!!! No subcortical labels !!!!!')
-            aseg_data = None
+    if aseg_data is None:
+        aseg_fname = op.join(subjects_dir, subject, 'mri', 'aseg.mgz')
+        asegf = aseg_fname
+        aseg_atlas_fname = op.join(subjects_dir, subject, 'mri', '{}+aseg.mgz'.format(atlas))
+        lut_atlast_fname = op.join(subjects_dir, subject, 'mri', '{}ColorLUT.txt'.format(atlas))
+        lut_fname = ''
+        if aseg_atlas:
+            if op.isfile(aseg_atlas_fname):
+                asegf = aseg_atlas_fname
+                lut_fname = lut_atlast_fname
+            else:
+                logging.warning("{} doesnot exist!".format(aseg_atlas_fname))
+        if not op.isfile(asegf):
+            asegf = op.join(subjects_dir, subject, 'mri', 'aparc+aseg.mgz')
+        try:
+            aseg = nib.load(asegf)
+            aseg_data = aseg.get_data()
+            # np.save(op.join(subjects_dir, subject, 'mri', 'aseg.npy'), aseg_data)
+        except:
+            backup_aseg_file = op.join(subjects_dir, subject, 'mri', 'aseg.npy')
+            if op.isfile(backup_aseg_file):
+                aseg_data = np.load(backup_aseg_file)
+            else:
+                logging.error('!!!!! Error in loading aseg file !!!!! ')
+                logging.error('!!!!! No subcortical labels !!!!!')
+                aseg_data = None
 
-    lut = fu.import_freesurfer_lut(lut_fname)
+    if lut is None:
+        lut = fu.import_freesurfer_lut(lut_fname)
 
-    # load the surfaces and annotation
-    # uses the pial surface, this change is pushed to MNE python
-    pia_verts = {}
-    for hemi in ['rh', 'lh']:
-        pia_verts[hemi], _ = nib.freesurfer.read_geometry(
-            op.join(subjects_dir, subject, 'surf', '{}.pial'.format(hemi)))
+    if pia_verts is None:
+        # load the surfaces and annotation
+        # uses the pial surface, this change is pushed to MNE python
+        pia_verts = {}
+        for hemi in ['rh', 'lh']:
+            pia_verts[hemi], _ = nib.freesurfer.read_geometry(
+                op.join(subjects_dir, subject, 'surf', '{}.pial'.format(hemi)))
     # pia = np.vstack((pia_verts['lh'], pia_verts['rh']))
     len_lh_pia = len(pia_verts['lh'])
 
