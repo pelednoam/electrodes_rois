@@ -32,8 +32,8 @@ EXISTING_FREESURFER_ANNOTATIONS = ['aparc.DKTatlas40.annot', 'aparc.annot', 'apa
 
 
 def identify_roi_from_atlas(atlas, labels, elecs_names, elecs_pos, elecs_ori=None, approx=4, elc_length=1,
-                            elecs_dists=None, elecs_types=None, strech_to_dist=False, enlarge_if_no_hit=False,
-                            bipolar=False, subjects_dir=None, subject=None, excludes=None,
+                            elecs_dists=None, elecs_types=None, strech_to_dist=False, enlarge_if_no_hit=True,
+                            hit_min_three=False, bipolar=False, subjects_dir=None, subject=None, excludes=None,
                             specific_elec='', nei_dimensions=None, aseg_atlas=True, aseg_data=None, lut=None,
                             pia_verts=None, n_jobs=6):
 
@@ -93,7 +93,7 @@ def identify_roi_from_atlas(atlas, labels, elecs_names, elecs_pos, elecs_ori=Non
     N = len(elecs_data)
     elecs_data_chunks = utils.chunks(elecs_data, len(elecs_data) / n_jobs)
     params = [(elecs_data_chunk, subject, subjects_dir, labels, aseg_data, lut, pia_verts, len_lh_pia, approx,
-               elc_length, nei_dimensions, strech_to_dist, enlarge_if_no_hit, bipolar, excludes,
+               elc_length, nei_dimensions, strech_to_dist, enlarge_if_no_hit, hit_min_three, bipolar, excludes,
                specific_elec, N) for elecs_data_chunk in elecs_data_chunks]
     print('run with {} jobs'.format(n_jobs))
     results = utils.run_parallel(_find_elecs_roi_parallel, params, n_jobs)
@@ -115,7 +115,7 @@ def identify_roi_from_atlas(atlas, labels, elecs_names, elecs_pos, elecs_ori=Non
 def _find_elecs_roi_parallel(params):
     results = []
     elecs_data_chunk, subject, subjects_dir, labels, aseg_data, lut, pia_verts, len_lh_pia, approx, elc_length,\
-        nei_dimensions, strech_to_dist, enlarge_if_no_hit, bipolar, excludes, specific_elec, N = params
+        nei_dimensions, strech_to_dist, enlarge_if_no_hit, hit_min_three, bipolar, excludes, specific_elec, N = params
     for elc_num, (elec_pos, elec_name, elc_ori, elc_dist, elc_type) in elecs_data_chunk:
         if specific_elec != '' and elec_name != specific_elec:
             continue
@@ -124,7 +124,7 @@ def _find_elecs_roi_parallel(params):
                 elec_hemi_vertices_dists, hemi = \
             identify_roi_from_atlas_per_electrode(labels, elec_pos, pia_verts, len_lh_pia, lut,
                 aseg_data, elec_name, approx, elc_length, nei_dimensions, elc_ori, elc_dist, elc_type, strech_to_dist,
-                enlarge_if_no_hit, bipolar, subjects_dir, subject, excludes, n_jobs=1)
+                enlarge_if_no_hit, hit_min_three, bipolar, subjects_dir, subject, excludes, n_jobs=1)
         results.append((elec_name, regions, regions_hits, subcortical_regions, subcortical_hits, approx_after_strech, elc_length,
                         elec_hemi_vertices, elec_hemi_vertices_dists, hemi))
     return results
@@ -132,7 +132,8 @@ def _find_elecs_roi_parallel(params):
 
 def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lut, aseg_data, elc_name,
     approx=4, elc_length=1, nei_dimensions=None, elc_ori=None, elc_dist=0, elc_type=DEPTH, strech_to_dist=False,
-    enlarge_if_no_hit=False, bipolar=False, subjects_dir=None, subject=None, excludes=None, n_jobs=1):
+    enlarge_if_no_hit=True, hit_min_three=False, bipolar=False, subjects_dir=None, subject=None, excludes=None,
+    n_jobs=1):
     '''
     Find the surface labels contacted by an electrode at this position
     in RAS space.
@@ -213,6 +214,9 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lu
                 approx=approx, nei_dimensions=nei_dimensions, subcortical_only=True, excludes=excludes)
             we_have_a_hit = do_we_have_a_hit(regions, subcortical_regions)
 
+        if hit_min_three:
+            we_have_a_hit = calc_number_of_hits(regions, subcortical_regions, excludes) >= 3
+
         if not we_have_a_hit and enlarge_if_no_hit:
             approx += .5
             if elc_type == DEPTH:
@@ -229,6 +233,13 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lu
 
     return regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length,\
            elec_hemi_vertices, elec_hemi_vertices_dists, hemi_str
+
+
+def calc_number_of_hits(regions, subcortical_regions, excludes):
+    new_excludes = ['Right-Cerebral-White-Matter', 'Left-Cerebral-White-Matter'] #+ excludes
+    excluded = re.compile('|'.join(new_excludes))
+    return len([x for x in regions if not excluded.search(x)]) + \
+               len([x for x in subcortical_regions if not excluded.search(x)])
 
 
 def do_we_have_a_hit(regions, subcortical_regions):
@@ -1139,7 +1150,7 @@ def run_for_all_subjects(args):
                     args.overwrite_labels_pkl, args.n_jobs)
                 elecs = identify_roi_from_atlas(
                     args.atlas, labels, elecs_names, elecs_pos, elcs_ori, args.error_radius, args.elc_length,
-                    elecs_dists, elecs_types, args.strech_to_dist, args.enlarge_if_no_hit,
+                    elecs_dists, elecs_types, args.strech_to_dist, args.enlarge_if_no_hit, args.hit_min_three,
                     bipolar, args.subjects_dir, subject, args.excludes, args.specific_elec, n_jobs=args.n_jobs)
                 if args.specific_elec != '':
                     continue
@@ -1269,6 +1280,7 @@ def get_args(argv=None):
     parser.add_argument('--template_brain', help='template brain', required=False, default='fsaverage5c')
     parser.add_argument('--strech_to_dist', help='strech_to_dist', required=False, default=1, type=au.is_true)
     parser.add_argument('--enlarge_if_no_hit', help='enlarge_if_no_hit', required=False, default=1, type=au.is_true)
+    parser.add_argument('--hit_min_three', help='hit_min_three', required=False, default=0, type=au.is_true)
     parser.add_argument('--output_template', help='output template', required=False,
         default='{subject}_{atlas}_electrodes_cigar_r_{error_radius}_l_{elec_length}{bipolar}{stretch}{postfix}')
     parser.add_argument('--only_check_files', help='only_check_files', required=False, default=0, type=au.is_true)
