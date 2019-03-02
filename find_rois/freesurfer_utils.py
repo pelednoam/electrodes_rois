@@ -69,7 +69,7 @@ def import_freesurfer_lut(fs_lut=''):
     rgba : numpy.ndarray
         one row is a brain region and the columns are the RGBA colors
     """
-    if fs_lut == '':
+    if fs_lut == '' or not op.isfile(fs_lut):
         fs_lut = op.join(utils.get_resources_fol(), 'FreeSurferColorLUT.txt')
     #     try:
     #         fs_home = os.environ['FREESURFER_HOME']

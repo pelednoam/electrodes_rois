@@ -32,9 +32,10 @@ EXISTING_FREESURFER_ANNOTATIONS = ['aparc.DKTatlas40.annot', 'aparc.annot', 'apa
 
 
 def identify_roi_from_atlas(atlas, labels, elecs_names, elecs_pos, elecs_ori=None, approx=4, elc_length=1,
-                            elecs_dists=None, elecs_types=None, strech_to_dist=False, enlarge_if_no_hit=False,
-                            bipolar=False, subjects_dir=None, subject=None, excludes=None,
-                            specific_elec='', nei_dimensions=None, aseg_atlas=True, n_jobs=6):
+                            elecs_dists=None, elecs_types=None, strech_to_dist=False, enlarge_if_no_hit=True,
+                            hit_min_three=False, bipolar=False, subjects_dir=None, subject=None, excludes=None,
+                            specific_elec='', nei_dimensions=None, aseg_atlas=True, aseg_data=None, lut=None,
+                            pia_verts=None, print_warnings=True, n_jobs=6):
 
     if subjects_dir is None or subjects_dir == '':
         subjects_dir = os.environ['SUBJECTS_DIR']
@@ -42,40 +43,43 @@ def identify_roi_from_atlas(atlas, labels, elecs_names, elecs_pos, elecs_ori=Non
         subject = os.environ['SUBJECT']
 
     # get the segmentation file
-    aseg_fname = op.join(subjects_dir, subject, 'mri', 'aseg.mgz')
-    asegf = aseg_fname
-    aseg_atlas_fname = op.join(subjects_dir, subject, 'mri', '{}+aseg.mgz'.format(atlas))
-    lut_atlast_fname = op.join(subjects_dir, subject, 'mri', '{}ColorLUT.txt'.format(atlas))
-    lut_fname = ''
-    if aseg_atlas:
-        if op.isfile(aseg_atlas_fname) and op.isfile(lut_atlast_fname):
-            asegf = aseg_atlas_fname
-            lut_fname = lut_atlast_fname
-        else:
-            logging.warning("{} doesnot exist!".format(aseg_atlas_fname))
-    if not op.isfile(asegf):
-        asegf = op.join(subjects_dir, subject, 'mri', 'aparc+aseg.mgz')
-    try:
-        aseg = nib.load(asegf)
-        aseg_data = aseg.get_data()
-        # np.save(op.join(subjects_dir, subject, 'mri', 'aseg.npy'), aseg_data)
-    except:
-        backup_aseg_file = op.join(subjects_dir, subject, 'mri', 'aseg.npy')
-        if op.isfile(backup_aseg_file):
-            aseg_data = np.load(backup_aseg_file)
-        else:
-            logging.error('!!!!! Error in loading aseg file !!!!! ')
-            logging.error('!!!!! No subcortical labels !!!!!')
-            aseg_data = None
+    if aseg_data is None:
+        aseg_fname = op.join(subjects_dir, subject, 'mri', 'aseg.mgz')
+        asegf = aseg_fname
+        aseg_atlas_fname = op.join(subjects_dir, subject, 'mri', '{}+aseg.mgz'.format(atlas))
+        lut_atlast_fname = op.join(subjects_dir, subject, 'mri', '{}ColorLUT.txt'.format(atlas))
+        lut_fname = ''
+        if aseg_atlas:
+            if op.isfile(aseg_atlas_fname):
+                asegf = aseg_atlas_fname
+                lut_fname = lut_atlast_fname
+            else:
+                logging.warning("{} doesnot exist!".format(aseg_atlas_fname))
+        if not op.isfile(asegf):
+            asegf = op.join(subjects_dir, subject, 'mri', 'aparc+aseg.mgz')
+        try:
+            aseg = nib.load(asegf)
+            aseg_data = aseg.get_data()
+            # np.save(op.join(subjects_dir, subject, 'mri', 'aseg.npy'), aseg_data)
+        except:
+            backup_aseg_file = op.join(subjects_dir, subject, 'mri', 'aseg.npy')
+            if op.isfile(backup_aseg_file):
+                aseg_data = np.load(backup_aseg_file)
+            else:
+                logging.error('!!!!! Error in loading aseg file !!!!! ')
+                logging.error('!!!!! No subcortical labels !!!!!')
+                aseg_data = None
 
-    lut = fu.import_freesurfer_lut(lut_fname)
+    if lut is None:
+        lut = fu.import_freesurfer_lut(lut_fname)
 
-    # load the surfaces and annotation
-    # uses the pial surface, this change is pushed to MNE python
-    pia_verts = {}
-    for hemi in ['rh', 'lh']:
-        pia_verts[hemi], _ = nib.freesurfer.read_geometry(
-            op.join(subjects_dir, subject, 'surf', '{}.pial'.format(hemi)))
+    if pia_verts is None:
+        # load the surfaces and annotation
+        # uses the pial surface, this change is pushed to MNE python
+        pia_verts = {}
+        for hemi in ['rh', 'lh']:
+            pia_verts[hemi], _ = nib.freesurfer.read_geometry(
+                op.join(subjects_dir, subject, 'surf', '{}.pial'.format(hemi)))
     # pia = np.vstack((pia_verts['lh'], pia_verts['rh']))
     len_lh_pia = len(pia_verts['lh'])
 
@@ -89,8 +93,8 @@ def identify_roi_from_atlas(atlas, labels, elecs_names, elecs_pos, elecs_ori=Non
     N = len(elecs_data)
     elecs_data_chunks = utils.chunks(elecs_data, len(elecs_data) / n_jobs)
     params = [(elecs_data_chunk, subject, subjects_dir, labels, aseg_data, lut, pia_verts, len_lh_pia, approx,
-               elc_length, nei_dimensions, strech_to_dist, enlarge_if_no_hit, bipolar, excludes,
-               specific_elec, N) for elecs_data_chunk in elecs_data_chunks]
+               elc_length, nei_dimensions, strech_to_dist, enlarge_if_no_hit, hit_min_three, bipolar, excludes,
+               specific_elec, print_warnings, N) for elecs_data_chunk in elecs_data_chunks]
     print('run with {} jobs'.format(n_jobs))
     results = utils.run_parallel(_find_elecs_roi_parallel, params, n_jobs)
     for results_chunk in results:
@@ -111,7 +115,8 @@ def identify_roi_from_atlas(atlas, labels, elecs_names, elecs_pos, elecs_ori=Non
 def _find_elecs_roi_parallel(params):
     results = []
     elecs_data_chunk, subject, subjects_dir, labels, aseg_data, lut, pia_verts, len_lh_pia, approx, elc_length,\
-        nei_dimensions, strech_to_dist, enlarge_if_no_hit, bipolar, excludes, specific_elec, N = params
+        nei_dimensions, strech_to_dist, enlarge_if_no_hit, hit_min_three, bipolar, excludes, specific_elec,\
+        print_warnings, N = params
     for elc_num, (elec_pos, elec_name, elc_ori, elc_dist, elc_type) in elecs_data_chunk:
         if specific_elec != '' and elec_name != specific_elec:
             continue
@@ -120,7 +125,7 @@ def _find_elecs_roi_parallel(params):
                 elec_hemi_vertices_dists, hemi = \
             identify_roi_from_atlas_per_electrode(labels, elec_pos, pia_verts, len_lh_pia, lut,
                 aseg_data, elec_name, approx, elc_length, nei_dimensions, elc_ori, elc_dist, elc_type, strech_to_dist,
-                enlarge_if_no_hit, bipolar, subjects_dir, subject, excludes, n_jobs=1)
+                enlarge_if_no_hit, hit_min_three, bipolar, subjects_dir, subject, excludes, print_warnings, n_jobs=1)
         results.append((elec_name, regions, regions_hits, subcortical_regions, subcortical_hits, approx_after_strech, elc_length,
                         elec_hemi_vertices, elec_hemi_vertices_dists, hemi))
     return results
@@ -128,7 +133,8 @@ def _find_elecs_roi_parallel(params):
 
 def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lut, aseg_data, elc_name,
     approx=4, elc_length=1, nei_dimensions=None, elc_ori=None, elc_dist=0, elc_type=DEPTH, strech_to_dist=False,
-    enlarge_if_no_hit=False, bipolar=False, subjects_dir=None, subject=None, excludes=None, n_jobs=1):
+    enlarge_if_no_hit=True, hit_min_three=False, bipolar=False, subjects_dir=None, subject=None, excludes=None,
+    print_warnings=True, n_jobs=1):
     '''
     Find the surface labels contacted by an electrode at this position
     in RAS space.
@@ -209,13 +215,17 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lu
                 approx=approx, nei_dimensions=nei_dimensions, subcortical_only=True, excludes=excludes)
             we_have_a_hit = do_we_have_a_hit(regions, subcortical_regions)
 
+        if hit_min_three:
+            we_have_a_hit = calc_number_of_hits(regions, subcortical_regions, excludes) >= 3
+
         if not we_have_a_hit and enlarge_if_no_hit:
             approx += .5
             if elc_type == DEPTH:
                 elc_length += 1
             elif elc_type == GRID:
                 logging.warning('Grid electrode ({}) without a cortical hit?!?! Trying a bigger cigar'.format(elc_name))
-            print('{}: No hit! Recalculate with a bigger cigar'.format(elc_name))
+            if print_warnings:
+                print('{}: No hit! Recalculate with a bigger cigar ({})'.format(elc_name, loop_ind))
             loop_ind += 1
 
     elec_hemi_vertices_mask = hemi_verts_dists < approx
@@ -225,6 +235,13 @@ def identify_roi_from_atlas_per_electrode(labels, pos, pia_verts, len_lh_pia, lu
 
     return regions, regions_hits, subcortical_regions, subcortical_hits, approx, elc_length,\
            elec_hemi_vertices, elec_hemi_vertices_dists, hemi_str
+
+
+def calc_number_of_hits(regions, subcortical_regions, excludes):
+    new_excludes = ['Right-Cerebral-White-Matter', 'Left-Cerebral-White-Matter'] #+ excludes
+    excluded = re.compile('|'.join(new_excludes))
+    return len([x for x in regions if not excluded.search(x)]) + \
+               len([x for x in subcortical_regions if not excluded.search(x)])
 
 
 def do_we_have_a_hit(regions, subcortical_regions):
@@ -439,9 +456,16 @@ def calc_neighbors(pos, approx=None, dimensions=None, calc_bins=False):
     return pos + neighb
 
 
-def grid_or_depth(data):
+def grid_or_depth(data, electrods_type=None):
     pos = data[:, 1:4].astype(float)
     electrodes_types = [None] * pos.shape[0]
+
+    if electrods_type is not None:
+        print('All the electrodes are {}'.format('grid' if electrods_type == GRID else 'depth'))
+        for index in range(data.shape[0]):
+            electrodes_types[index] = electrods_type
+        return np.array(electrodes_types), None
+
     if data.shape[1] > 4:
         if len(set(data[:, 4]) - set(ELECTRODES_TYPES)) > 0:
             raise Exception('In column 5 the only permitted values are {}'.format(ELECTRODES_TYPES))
@@ -525,7 +549,7 @@ def get_electrodes(subject, bipolar, args):
         data = np.delete(data, (0), axis=0)
         print('First line in the electrodes RAS coordinates is a header')
 
-    electrodes_types, electrodes_types_names = grid_or_depth(data)
+    electrodes_types, electrodes_types_names = grid_or_depth(data, args.electrodes_type)
     # print([(n, elec_group_number(n), t) for n, t in zip(data[:, 0], electrodes_group_type)])
     if bipolar:
         depth_data = data[electrodes_types == DEPTH, :]
@@ -802,20 +826,28 @@ def get_electrodes_orientation(elecs_names, elecs_pos, bipolar, elecs_types, ele
         if elecs_types[index] == DEPTH:
             if bipolar:
                 elc_group, elc_num1, elc_num2 = elec_group_number(elc_name, True)
-                next_elc = '{}{}-{}{}'.format(elc_group, elc_num2 + 1, elc_group, elc_num1 + 1)
+                if elc_num2 > elc_num1:
+                    next_elc = '{}{}-{}{}'.format(elc_group, elc_num2 + 1, elc_group, elc_num1 + 1)
+                else:
+                    next_elc = '{}{}-{}{}'.format(elc_group, elc_num1 + 1, elc_group, elc_num2 + 1)
             else:
                 elc_group, elc_num = elec_group_number(elc_name)
                 next_elc = '{}{}'.format(elc_group, elc_num+1)
             ori = 1
             if next_elc not in elecs_names:
                 if bipolar:
-                    next_elc = '{}{}-{}{}'.format(elc_group, elc_num1, elc_group, elc_num1-1)
+                    if elc_num2 > elc_num1:
+                        next_elc = '{}{}-{}{}'.format(elc_group, elc_num2 - 1, elc_group, elc_num1 - 1)
+                    else:
+                        next_elc = '{}{}-{}{}'.format(elc_group, elc_num1 - 1, elc_group, elc_num2 - 1)
                 else:
-                    next_elc = '{}{}'.format(elc_group, elc_num-1)
+                    next_elc = '{}{}'.format(elc_group, elc_num - 1)
                 ori = -1
             if next_elc not in elecs_names:
                 print("{} doesn't seem to be depth, changing the type to grid".format(elc_name))
                 elecs_types[index] = GRID
+            elif next_elc == elc_name:
+                raise Exception('next_elc ({}) == elc_name ({}) !!!'.format(elc_name, next_elc))
             else:
                 next_elc_index = np.where(elecs_names == next_elc)[0][0]
                 next_elc_pos = elecs_pos[next_elc_index]
@@ -1121,7 +1153,7 @@ def run_for_all_subjects(args):
                     args.overwrite_labels_pkl, args.n_jobs)
                 elecs = identify_roi_from_atlas(
                     args.atlas, labels, elecs_names, elecs_pos, elcs_ori, args.error_radius, args.elc_length,
-                    elecs_dists, elecs_types, args.strech_to_dist, args.enlarge_if_no_hit,
+                    elecs_dists, elecs_types, args.strech_to_dist, args.enlarge_if_no_hit, args.hit_min_three,
                     bipolar, args.subjects_dir, subject, args.excludes, args.specific_elec, n_jobs=args.n_jobs)
                 if args.specific_elec != '':
                     continue
@@ -1251,6 +1283,7 @@ def get_args(argv=None):
     parser.add_argument('--template_brain', help='template brain', required=False, default='fsaverage5c')
     parser.add_argument('--strech_to_dist', help='strech_to_dist', required=False, default=1, type=au.is_true)
     parser.add_argument('--enlarge_if_no_hit', help='enlarge_if_no_hit', required=False, default=1, type=au.is_true)
+    parser.add_argument('--hit_min_three', help='hit_min_three', required=False, default=0, type=au.is_true)
     parser.add_argument('--output_template', help='output template', required=False,
         default='{subject}_{atlas}_electrodes_cigar_r_{error_radius}_l_{elec_length}{bipolar}{stretch}{postfix}')
     parser.add_argument('--only_check_files', help='only_check_files', required=False, default=0, type=au.is_true)
@@ -1281,6 +1314,8 @@ def get_args(argv=None):
     parser.add_argument('--sftp', help='copy subjects files over sftp', required=False, default=0, type=au.is_true)
     parser.add_argument('--sftp_username', help='sftp username', required=False, default='')
     parser.add_argument('--sftp_domain', help='sftp domain', required=False, default='')
+    parser.add_argument('--electrodes_type', help='', required=False, default=None)
+
 
     args = utils.Bag(au.parse_parser(parser, argv))
     args.n_jobs = utils.get_n_jobs(args.n_jobs)
