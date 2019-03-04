@@ -468,7 +468,7 @@ def grid_or_depth(data, electrods_type=None):
 
     if data.shape[1] > 4:
         if len(set(data[:, 4]) - set(ELECTRODES_TYPES)) > 0:
-            raise Exception('In column 5 the only permitted values are {}'.format(ELECTRODES_TYPES))
+            print('In column 5 the only permitted values are {} ({})'.format(ELECTRODES_TYPES, set(data[:, 4])))
         else:
             for ind, elc_type in enumerate(data[:, 4]):
                 electrodes_types[ind] = GRID if elc_type in ['grid', 'strip'] else DEPTH
