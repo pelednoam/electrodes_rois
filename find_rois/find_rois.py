@@ -27,7 +27,7 @@ from find_rois.snap_grid_to_pial import snap_electrodes_to_surface
 
 LINKS_DIR = utils.get_links_dir()
 ELECTRODES_TYPES = ('depth', 'grid', 'strip', 'microgrid', 'neuroport')
-DEPTH, GRID = range(2)
+DEPTH, GRID, UNKNOWN = range(3)
 EXISTING_FREESURFER_ANNOTATIONS = ['aparc.DKTatlas40.annot', 'aparc.annot', 'aparc.a2009s.annot']
 
 
@@ -491,7 +491,11 @@ def grid_or_depth(data, electrods_type=None):
     print('groups types: {}'.format(group_type.keys()))
     for index in range(data.shape[0]):
         elc_group, _ = elec_group_number(data[index, 0])
-        electrodes_types[index] = group_type[elc_group]
+        if elc_group in group_type:
+            electrodes_types[index] = group_type[elc_group]
+        else:
+            print('grid_or_depth: Warning: {} no in groupo_type!'.format(elc_group))
+            electrodes_types[index] = UNKNOWN
 
     return np.array(electrodes_types), None
 
