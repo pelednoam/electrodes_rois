@@ -866,11 +866,11 @@ def elec_group_number(elec_name, bipolar=False):
         # ind = np.where([int(s.isdigit()) for s in elec_name])[-1][0]
         # num = int(elec_name[ind:])
         elec_name = elec_name.strip()
-        num = int(utils.find_elec_num(elec_name))
+        num = utils.find_elec_num(elec_name)
         # group = elec_name[:ind]
         group = elec_name[:elec_name.rfind(str(num))]
         # print('name: {}, group: {}, num: {}'.format(elec_name, group, num))
-        return group, num
+        return group, int(num)
 
 
 def get_subjects():
