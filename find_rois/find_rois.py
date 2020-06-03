@@ -34,7 +34,7 @@ EXISTING_FREESURFER_ANNOTATIONS = ['aparc.DKTatlas40.annot', 'aparc.annot', 'apa
 def identify_roi_from_atlas(atlas, labels, elecs_names, elecs_pos, elecs_ori=None, approx=4, elc_length=1,
                             elecs_dists=None, elecs_types=None, strech_to_dist=False, enlarge_if_no_hit=True,
                             hit_min_three=False, bipolar=False, subjects_dir=None, subject=None, excludes=None,
-                            specific_elec='', nei_dimensions=None, aseg_atlas=True, aseg_data=None, lut=None,
+                            specific_elec='', nei_dimensions=None, aseg_atlas=False, aseg_data=None, lut=None,
                             pia_verts=None, print_warnings=True, n_jobs=6):
 
     if subjects_dir is None or subjects_dir == '':
@@ -54,7 +54,7 @@ def identify_roi_from_atlas(atlas, labels, elecs_names, elecs_pos, elecs_ori=Non
                 asegf = aseg_atlas_fname
                 lut_fname = lut_atlast_fname
             else:
-                logging.warning("{} doesnot exist!".format(aseg_atlas_fname))
+                logging.warning("{} does not exist!".format(aseg_atlas_fname))
         if not op.isfile(asegf):
             asegf = op.join(subjects_dir, subject, 'mri', 'aparc+aseg.mgz')
         try:
@@ -87,7 +87,9 @@ def identify_roi_from_atlas(atlas, labels, elecs_names, elecs_pos, elecs_ori=Non
     if elecs_ori is None:
         elecs_ori = [None] * len(elecs_pos)
     if elecs_types is None:
-        elecs_types = [DEPTH] * len (elecs_pos)
+        elecs_types = [DEPTH] * len(elecs_pos)
+    if elecs_dists is None:
+        elecs_dists = [0] * len(elecs_pos)
 
     elecs_data = list(enumerate(zip(elecs_pos, elecs_names, elecs_ori, elecs_dists, elecs_types)))
     N = len(elecs_data)
