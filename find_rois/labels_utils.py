@@ -8,7 +8,7 @@ import mne.surface
 import numpy as np
 from scipy.spatial.distance import cdist
 
-import utils
+from find_rois import utils
 
 LINKS_DIR = utils.get_links_dir()
 SUBJECTS_DIR = utils.get_link_dir(LINKS_DIR, 'subjects', 'SUBJECTS_DIR')

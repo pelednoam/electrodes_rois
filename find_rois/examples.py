@@ -1,6 +1,6 @@
 import argparse
 
-from find_rois import find_rois
+from find_rois import main
 from find_rois import utils
 from find_rois import args_utils as au
 
@@ -11,8 +11,8 @@ def snap_grid_to_pial_use_sftp(subject, args):
             '--remote_subject_dir', '/space/thibault/1/users/npeled/remote_subjects/{subject}',
             '--write_compact_bipolar', '1', '--overwrite', '0',
             '-f', 'snap_grid_to_pial']
-    args = find_rois.get_args(argv)
-    find_rois.run_for_all_subjects(args)
+    args = main.get_args(argv)
+    main.run_for_all_subjects(args)
 
 
 def darpa(subject, args):
@@ -20,8 +20,8 @@ def darpa(subject, args):
     argv = ['-s', subject, '-a', args.atlas,
             '--remote_subject_dir', '/space/huygens/1/users/kara/{subject}_SurferOutput']
             # '--remote_subject_dir_func', 'upper']
-    args = find_rois.get_args(argv)
-    find_rois.run_for_all_subjects(args)
+    args = main.get_args(argv)
+    main.run_for_all_subjects(args)
 
 
 def darpa_sftp(subject, args):
@@ -30,8 +30,8 @@ def darpa_sftp(subject, args):
             '--sftp', '1', '--sftp_username', 'npeled',
             '--sftp_domain', 'door.nmr.mgh.harvard.edu',
             '--remote_subject_dir', '/space/huygens/1/users/kara/{}_SurferOutput'.format(darpa_subject)]
-    args = find_rois.get_args(argv)
-    find_rois.run_for_all_subjects(args)
+    args = main.get_args(argv)
+    main.run_for_all_subjects(args)
 
 
 def sftp(subject, args):
@@ -39,8 +39,8 @@ def sftp(subject, args):
             '--sftp', '1', '--sftp_username', 'npeled',
             '--sftp_domain', 'door.nmr.mgh.harvard.edu',
             '--remote_subject_dir', '/autofs/space/thibault_001/users/npeled/subjects/{}'.format(subject)]
-    args = find_rois.get_args(argv)
-    find_rois.run_for_all_subjects(args)
+    args = main.get_args(argv)
+    main.run_for_all_subjects(args)
 
 
 if __name__ == '__main__':
