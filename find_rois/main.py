@@ -839,22 +839,26 @@ def get_electrodes_orientation(elecs_names, elecs_pos, bipolar, elecs_types, ele
         if elecs_types[index] == DEPTH:
             if bipolar:
                 elc_group, elc_num1, elc_num2 = elec_group_number(elc_name, True)
-                if elc_num2 > elc_num1:
-                    next_elc = '{}{}-{}{}'.format(elc_group, elc_num2 + 1, elc_group, elc_num1 + 1)
+                if int(elc_num2) > int(elc_num1):
+                    next_elc = '{}{}-{}{}'.format(
+                        elc_group, utils.inc_elc_num(elc_num2), elc_group, utils.inc_elc_num(elc_num1))
                 else:
-                    next_elc = '{}{}-{}{}'.format(elc_group, elc_num1 + 1, elc_group, elc_num2 + 1)
+                    next_elc = '{}{}-{}{}'.format(
+                        elc_group, utils.inc_elc_num(elc_num1), elc_group, utils.inc_elc_num(elc_num2))
             else:
                 elc_group, elc_num = elec_group_number(elc_name)
-                next_elc = '{}{}'.format(elc_group, elc_num+1)
+                next_elc = '{}{}'.format(elc_group, utils.inc_elc_num(elc_num))
             ori = 1
             if next_elc not in elecs_names:
                 if bipolar:
-                    if elc_num2 > elc_num1:
-                        next_elc = '{}{}-{}{}'.format(elc_group, elc_num2 - 1, elc_group, elc_num1 - 1)
+                    if int(elc_num2) > int(elc_num1):
+                        next_elc = '{}{}-{}{}'.format(
+                            elc_group, utils.dec_elc_num(elc_num2), elc_group, utils.dec_elc_num(elc_num1))
                     else:
-                        next_elc = '{}{}-{}{}'.format(elc_group, elc_num1 - 1, elc_group, elc_num2 - 1)
+                        next_elc = '{}{}-{}{}'.format(
+                            elc_group, utils.dec_elc_num(elc_num1), elc_group, utils.dec_elc_num(elc_num2))
                 else:
-                    next_elc = '{}{}'.format(elc_group, elc_num - 1)
+                    next_elc = '{}{}'.format(elc_group, utils.dec_elc_num(elc_num))
                 ori = -1
             if next_elc not in elecs_names:
                 print("{} doesn't seem to be depth, changing the type to grid".format(elc_name))
@@ -880,9 +884,9 @@ def elec_group_number(elec_name, bipolar=False):
         # ind = np.where([int(s.isdigit()) for s in elec_name])[-1][0]
         # num = int(elec_name[ind:])
         elec_name = elec_name.strip()
-        num = int(utils.find_elec_num(elec_name))
+        num = utils.find_elec_num(elec_name)
         # group = elec_name[:ind]
-        group = elec_name[:elec_name.rfind(str(num))]
+        group = elec_name[:elec_name.rfind(num)]
         # print('name: {}, group: {}, num: {}'.format(elec_name, group, num))
         return group, num
 

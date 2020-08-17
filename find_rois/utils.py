@@ -500,3 +500,11 @@ def split_bipolar_name(elec_name):
     elif len(splits) == 4:
         elec_name2, elec_name1 = '-'.join(splits[:2]), '-'.join(splits[2:4])
     return elec_name1, elec_name2
+
+
+def inc_elc_num(elc_num):
+    return str(int(elc_num) + 1).zfill(len(elc_num))
+
+
+def dec_elc_num(elc_num):
+    return str(int(elc_num) - 1).zfill(len(elc_num))
