@@ -1180,7 +1180,7 @@ def run_for_all_subjects(args):
                     args.atlas, labels, elecs_names, elecs_pos, elcs_ori, args.error_radius, args.elc_length,
                     elecs_dists, elecs_types, args.strech_to_dist, args.enlarge_if_no_hit, args.hit_min_three,
                     args.hit_only_cortex, bipolar, args.subjects_dir, subject, args.excludes, args.specific_elec,
-                    args.debug_mode, n_jobs=args.n_jobs)
+                    debug_mode=args.debug_mode, n_jobs=args.n_jobs)
                 if args.specific_elec != '':
                     continue
                 utils.save(elecs, results_fname_pkl)
