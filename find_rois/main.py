@@ -188,6 +188,8 @@ def identify_roi_from_atlas_per_electrode(
         elc_length = elc_dist
     loop_ind = 0
     while not we_have_a_hit and loop_ind < 20:
+        if debug_mode:
+            print('elc_type: {}'.format('grid' if elc_type == GRID else 'depth'))
         if elc_type == GRID:
             regions, regions_hits = [], []
             # grow the area of surface surrounding the vertex
