@@ -219,9 +219,9 @@ def identify_roi_from_atlas_per_electrode(
             elc_line = get_elec_line(pos, elc_ori, elc_length)
             hemi_verts_dists = np.min(cdist(elc_line, pia_verts[hemi_str]), 0)
             if debug_mode:
-                print('***DEBUG*** {}'.format(debug_fname))
                 debug_fname = op.join(args.mmvt_dir, subject, 'electrodes', '{}_{}_{}.pkl'.format(
                     elc_name, approx, elc_length))
+                print('***DEBUG*** {}'.format(debug_fname))
                 utils.save((
                     elc_name, pos, elc_length, labels, hemi_str, verts, elc_line, bins, approx, _region_are_excluded,
                     lut, aseg_data, approx, nei_dimensions, excludes, hit_only_cortex), debug_fname)
