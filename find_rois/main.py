@@ -36,7 +36,7 @@ def identify_roi_from_atlas(
         elecs_dists=None, elecs_types=None, strech_to_dist=False, enlarge_if_no_hit=True,
         hit_min_three=False, hit_only_cortex=False, bipolar=False, subjects_dir=None, subject=None,
         excludes=None, specific_elec='', nei_dimensions=None, aseg_atlas=False, aseg_data=None,
-        lut=None, pia_verts=None, print_warnings=False, n_jobs=6):
+        lut=None, pia_verts=None, print_warnings=False, debug_mode=False, n_jobs=6):
 
     if subjects_dir is None or subjects_dir == '':
         subjects_dir = os.environ['SUBJECTS_DIR']
@@ -97,7 +97,8 @@ def identify_roi_from_atlas(
     elecs_data_chunks = utils.chunks(elecs_data, len(elecs_data) / n_jobs)
     params = [(elecs_data_chunk, subject, subjects_dir, labels, aseg_data, lut, pia_verts, len_lh_pia, approx,
                elc_length, nei_dimensions, strech_to_dist, enlarge_if_no_hit, hit_min_three, hit_only_cortex,
-               bipolar, excludes, specific_elec, print_warnings, N) for elecs_data_chunk in elecs_data_chunks]
+               bipolar, excludes, specific_elec, print_warnings, debug_mode, N)
+              for elecs_data_chunk in elecs_data_chunks]
     print('run with {} jobs'.format(n_jobs))
     results = utils.run_parallel(_find_elecs_roi_parallel, params, n_jobs)
     for results_chunk in results:
@@ -119,7 +120,7 @@ def _find_elecs_roi_parallel(params):
     results = []
     elecs_data_chunk, subject, subjects_dir, labels, aseg_data, lut, pia_verts, len_lh_pia, approx, elc_length,\
         nei_dimensions, strech_to_dist, enlarge_if_no_hit, hit_min_three, hit_only_cortex, bipolar, excludes,\
-        specific_elec, print_warnings, N = params
+        specific_elec, print_warnings, debug_mode, N = params
     for elc_num, (elec_pos, elec_name, elc_ori, elc_dist, elc_type) in elecs_data_chunk:
         if specific_elec != '' and elec_name != specific_elec:
             continue
@@ -129,7 +130,7 @@ def _find_elecs_roi_parallel(params):
             identify_roi_from_atlas_per_electrode(labels, elec_pos, pia_verts, len_lh_pia, lut,
                 aseg_data, elec_name, approx, elc_length, nei_dimensions, elc_ori, elc_dist, elc_type, strech_to_dist,
                 enlarge_if_no_hit, hit_min_three, hit_only_cortex, bipolar, subjects_dir, subject, excludes,
-                print_warnings, n_jobs=1)
+                print_warnings, debug_mode, n_jobs=1)
         results.append((elec_name, regions, regions_hits, subcortical_regions, subcortical_hits, approx_after_strech, elc_length,
                         elec_hemi_vertices, elec_hemi_vertices_dists, hemi))
     return results
@@ -139,7 +140,7 @@ def identify_roi_from_atlas_per_electrode(
         labels, pos, pia_verts, len_lh_pia, lut, aseg_data, elc_name, approx=4, elc_length=1, nei_dimensions=None,
         elc_ori=None, elc_dist=0, elc_type=DEPTH, strech_to_dist=False, enlarge_if_no_hit=True, hit_min_three=False,
         hit_only_cortex=False, bipolar=False, subjects_dir=None, subject=None, excludes=None, print_warnings=False,
-        n_jobs=1):
+        debug_mode=False, n_jobs=1):
     '''
     Find the surface labels contacted by an electrode at this position
     in RAS space.
@@ -215,6 +216,12 @@ def identify_roi_from_atlas_per_electrode(
             bins = calc_neighbors(pos, approx + elc_length, nei_dimensions, calc_bins=True)
             elc_line = get_elec_line(pos, elc_ori, elc_length)
             hemi_verts_dists = np.min(cdist(elc_line, pia_verts[hemi_str]), 0)
+            if debug_mode:
+                debug_fname = op.join(args.mmvt_dir, subject, 'electrodes', '{}_{}_{}.pkl'.format(
+                    elc_name, approx, elc_length))
+                utils.save((
+                    elc_name, pos, elc_length, labels, hemi_str, verts, elc_line, bins, approx, _region_are_excluded,
+                    lut, aseg_data, approx, nei_dimensions, excludes, hit_only_cortex), debug_fname)
             regions, regions_hits = calc_hits(labels, hemi_str, verts, elc_line, bins, approx, _region_are_excluded)
             subcortical_regions, subcortical_hits = identify_roi_from_aparc(pos, elc_line, elc_length, lut, aseg_data,
                 approx=approx, nei_dimensions=nei_dimensions, subcortical_only=True, excludes=excludes)
@@ -1172,7 +1179,7 @@ def run_for_all_subjects(args):
                     args.atlas, labels, elecs_names, elecs_pos, elcs_ori, args.error_radius, args.elc_length,
                     elecs_dists, elecs_types, args.strech_to_dist, args.enlarge_if_no_hit, args.hit_min_three,
                     args.hit_only_cortex, bipolar, args.subjects_dir, subject, args.excludes, args.specific_elec,
-                    n_jobs=args.n_jobs)
+                    args.debug_mode, n_jobs=args.n_jobs)
                 if args.specific_elec != '':
                     continue
                 utils.save(elecs, results_fname_pkl)
@@ -1329,12 +1336,12 @@ def get_args(argv=None):
     parser.add_argument('--excludes', help='excluded labels', required=False, type=au.str_arr_type,
         default='Unknown,unknown,Cerebral-Cortex,corpuscallosum,WM-hypointensities,Ventricle,Inf-Lat-Vent,choroid-plexus,CC,CSF,VentralDC')
     parser.add_argument('--exclude_white', help='', required=False, default=0, type=au.is_true)
-    parser.add_argument('--specific_elec', help='run on only one electrodes', required=False, default='')
+    parser.add_argument('--specific_elec', help='run on only one electrode', required=False, default='')
     parser.add_argument('--sftp', help='copy subjects files over sftp', required=False, default=0, type=au.is_true)
     parser.add_argument('--sftp_username', help='sftp username', required=False, default='')
     parser.add_argument('--sftp_domain', help='sftp domain', required=False, default='')
     parser.add_argument('--electrodes_type', help='', required=False, default=None)
-
+    parser.add_argument('--debug_mode', help='', required=False, default=0, type=au.is_true)
 
     args = utils.Bag(au.parse_parser(parser, argv))
     args.n_jobs = utils.get_n_jobs(args.n_jobs)
