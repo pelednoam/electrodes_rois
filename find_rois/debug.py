@@ -16,6 +16,10 @@ def test(subject, elc_name, approx, elc_length):
         pos, elc_line, elc_length, lut, aseg_data, approx=approx, nei_dimensions=nei_dimensions,
         subcortical_only=True, excludes=excludes)
     we_have_a_hit = main.do_we_have_a_hit(regions, subcortical_regions, hit_only_cortex)
+    print('{} {}: {} {}'.format(we_have_a_hit, elc_name, regions, subcortical_regions))
+
 
 if __name__ == '__main__':
-    test()
+    approx, elc_length = 3, 4
+    subject, elc_name = '', ''
+    test(subject, elc_name, approx, elc_length)
