@@ -1343,7 +1343,7 @@ def get_args(argv=None):
     parser.add_argument('--sftp', help='copy subjects files over sftp', required=False, default=0, type=au.is_true)
     parser.add_argument('--sftp_username', help='sftp username', required=False, default='')
     parser.add_argument('--sftp_domain', help='sftp domain', required=False, default='')
-    parser.add_argument('--electrodes_type', help='', required=False, default=None)
+    parser.add_argument('--electrodes_type', help='', required=False, default=None, type=int)
     parser.add_argument('--debug_mode', help='', required=False, default=0, type=au.is_true)
 
     args = utils.Bag(au.parse_parser(parser, argv))
