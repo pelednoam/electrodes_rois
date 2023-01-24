@@ -36,7 +36,7 @@ def identify_roi_from_atlas(
         elecs_dists=None, elecs_types=None, strech_to_dist=False, enlarge_if_no_hit=True,
         hit_min_three=False, hit_only_cortex=False, bipolar=False, subjects_dir=None, subject=None,
         excludes=None, specific_elec='', nei_dimensions=None, aseg_atlas=False, aseg_data=None,
-        lut=None, pia_verts=None, print_warnings=False, n_jobs=6):
+        lut=None, pia_verts=None, print_warnings=False, d_approx=0.5, d_elc_length=1, n_jobs=6):
 
     if subjects_dir is None or subjects_dir == '':
         subjects_dir = os.environ['SUBJECTS_DIR']
@@ -97,7 +97,7 @@ def identify_roi_from_atlas(
     elecs_data_chunks = utils.chunks(elecs_data, len(elecs_data) / n_jobs)
     params = [(elecs_data_chunk, subject, subjects_dir, labels, aseg_data, lut, pia_verts, len_lh_pia, approx,
                elc_length, nei_dimensions, strech_to_dist, enlarge_if_no_hit, hit_min_three, hit_only_cortex,
-               bipolar, excludes, specific_elec, print_warnings, N) for elecs_data_chunk in elecs_data_chunks]
+               bipolar, excludes, specific_elec, print_warnings, d_approx, d_elc_length, N) for elecs_data_chunk in elecs_data_chunks]
     print('run with {} jobs'.format(n_jobs))
     results = utils.run_parallel(_find_elecs_roi_parallel, params, n_jobs)
     for results_chunk in results:
@@ -119,7 +119,7 @@ def _find_elecs_roi_parallel(params):
     results = []
     elecs_data_chunk, subject, subjects_dir, labels, aseg_data, lut, pia_verts, len_lh_pia, approx, elc_length,\
         nei_dimensions, strech_to_dist, enlarge_if_no_hit, hit_min_three, hit_only_cortex, bipolar, excludes,\
-        specific_elec, print_warnings, N = params
+        specific_elec, print_warnings, d_approx, d_elc_length, N = params
     for elc_num, (elec_pos, elec_name, elc_ori, elc_dist, elc_type) in elecs_data_chunk:
         if specific_elec != '' and elec_name != specific_elec:
             continue
@@ -129,7 +129,7 @@ def _find_elecs_roi_parallel(params):
             identify_roi_from_atlas_per_electrode(labels, elec_pos, pia_verts, len_lh_pia, lut,
                 aseg_data, elec_name, approx, elc_length, nei_dimensions, elc_ori, elc_dist, elc_type, strech_to_dist,
                 enlarge_if_no_hit, hit_min_three, hit_only_cortex, bipolar, subjects_dir, subject, excludes,
-                print_warnings, n_jobs=1)
+                print_warnings, d_approx, d_elc_length, n_jobs=1)
         results.append((elec_name, regions, regions_hits, subcortical_regions, subcortical_hits, approx_after_strech, elc_length,
                         elec_hemi_vertices, elec_hemi_vertices_dists, hemi))
     return results
@@ -139,7 +139,7 @@ def identify_roi_from_atlas_per_electrode(
         labels, pos, pia_verts, len_lh_pia, lut, aseg_data, elc_name, approx=4, elc_length=1, nei_dimensions=None,
         elc_ori=None, elc_dist=0, elc_type=DEPTH, strech_to_dist=False, enlarge_if_no_hit=True, hit_min_three=False,
         hit_only_cortex=False, bipolar=False, subjects_dir=None, subject=None, excludes=None, print_warnings=False,
-        n_jobs=1):
+        d_approx=0.5, d_elc_length=1, n_jobs=1):
     '''
     Find the surface labels contacted by an electrode at this position
     in RAS space.
@@ -224,9 +224,9 @@ def identify_roi_from_atlas_per_electrode(
             we_have_a_hit = calc_number_of_hits(regions, subcortical_regions, excludes) >= 3
 
         if not we_have_a_hit and enlarge_if_no_hit:
-            approx += .5
+            approx += d_approx # .5
             if elc_type == DEPTH:
-                elc_length += 1
+                elc_length += d_elc_length # 1
             elif elc_type == GRID:
                 logging.warning('Grid electrode ({}) without a cortical hit?!?! Trying a bigger cigar'.format(elc_name))
             if print_warnings:
@@ -861,8 +861,9 @@ def get_electrodes_orientation(elecs_names, elecs_pos, bipolar, elecs_types, ele
                     next_elc = '{}{}'.format(elc_group, utils.dec_elc_num(elc_num))
                 ori = -1
             if next_elc not in elecs_names:
-                print("{} doesn't seem to be depth, changing the type to grid".format(elc_name))
-                elecs_types[index] = GRID
+                print("{} doesn't seem to be depth, changing the type to grid?".format(elc_name))
+                # todo: Check if we want to check this contact to a grid
+                # elecs_types[index] = GRID
             elif next_elc == elc_name:
                 raise Exception('next_elc ({}) == elc_name ({}) !!!'.format(elc_name, next_elc))
             else:
