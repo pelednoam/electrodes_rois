@@ -119,7 +119,8 @@ def _find_elecs_roi_parallel(params):
     results = []
     elecs_data_chunk, subject, subjects_dir, labels, aseg_data, lut, pia_verts, len_lh_pia, approx, elc_length,\
         nei_dimensions, strech_to_dist, enlarge_if_no_hit, hit_min_three, hit_only_cortex, bipolar, excludes,\
-        specific_elec, print_warnings, d_aprox, d_elc_length, N = params
+        specific_elec, print_warnings, d_approx, d_elc_length, N = params
+    debug_mode = False
     for elc_num, (elec_pos, elec_name, elc_ori, elc_dist, elc_type) in elecs_data_chunk:
         if specific_elec != '' and elec_name != specific_elec:
             continue
@@ -186,7 +187,7 @@ def identify_roi_from_atlas_per_electrode(
     if strech_to_dist and bipolar and elc_length < elc_dist:
         elc_length = elc_dist
     loop_ind = 0
-    while not we_have_a_hit and loop_ind < 20:
+    while not we_have_a_hit and loop_ind < 10:
         if debug_mode:
             print('elc_type: {}'.format('grid' if elc_type == GRID else 'depth'))
         if elc_type == GRID:
@@ -1182,7 +1183,7 @@ def run_for_all_subjects(args):
                     args.atlas, labels, elecs_names, elecs_pos, elcs_ori, args.error_radius, args.elc_length,
                     elecs_dists, elecs_types, args.strech_to_dist, args.enlarge_if_no_hit, args.hit_min_three,
                     args.hit_only_cortex, bipolar, args.subjects_dir, subject, args.excludes, args.specific_elec,
-                    debug_mode=args.debug_mode, n_jobs=args.n_jobs)
+                    n_jobs=args.n_jobs)
                 if args.specific_elec != '':
                     continue
                 utils.save(elecs, results_fname_pkl)
