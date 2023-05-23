@@ -549,7 +549,10 @@ def get_electrodes_types_set(subject, args):
 
 
 def get_electrodes(subject, bipolar, args):
-    if args.pos_fname != '':
+    data = None
+    if args.pos_fname.endswith('csv'):
+        data = read_data_from_csv_file(args.pos_fname, args.csv_delimiter)
+    elif args.pos_fname != '':
         f = np.load(args.pos_fname)
         if 'pos' not in f or 'names' not in f or 'dists' not in f:
             raise_err('electrodes positions file was given, but without the fields' +
@@ -559,12 +562,13 @@ def get_electrodes(subject, bipolar, args):
                 'while you set the bipolarity to {}!'.format(bipolar))
         return f['names'], f['pos'], f['dists'], f['electrodes_types'], None
 
-    subject_elecs_dir = op.join(args.subjects_dir, subject, 'electrodes')
-    utils.make_dir(subject_elecs_dir)
-    if args.elecs_dir == '':
-        args.elecs_dir = get_electrodes_dir()
+    if data is None:
+        subject_elecs_dir = op.join(args.subjects_dir, subject, 'electrodes')
+        utils.make_dir(subject_elecs_dir)
+        if args.elecs_dir == '':
+            args.elecs_dir = get_electrodes_dir()
 
-    data = read_electrodes_xls(subject, subject_elecs_dir, args)
+        data = read_electrodes_xls(subject, subject_elecs_dir, args)
     # Check if the electrodes coordinates has a header
     try:
         header = data[0, 1:4].astype(float)
@@ -632,10 +636,15 @@ def read_electrodes_xls(subject, subject_elecs_dir, args):
                     op.join(subject_elecs_dir, '{}_RAS.csv'.format(subject)))
     check_for_electrodes_coordinates_file(subject, args.subjects_dir, args.elecs_dir)
     elec_file = op.join(args.elecs_dir, '{}.csv'.format(subject))
-    data = np.genfromtxt(elec_file, dtype=str, delimiter=args.csv_delimiter)
+    # data = np.genfromtxt(elec_file, dtype=str, delimiter=args.csv_delimiter)
+    # data = fix_str_items_in_csv(data)
+    return read_data_from_csv_file(elec_file, args.csv_delimiter)
+
+
+def read_data_from_csv_file(elec_file, csv_delimiter):
+    data = np.genfromtxt(elec_file, dtype=str, delimiter=csv_delimiter)
     data = fix_str_items_in_csv(data)
     return data
-
 
 def get_names_dists_non_bipolar(data):
     names = data[:, 0]
