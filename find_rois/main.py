@@ -315,7 +315,10 @@ def read_labels_vertices(subjects_dir, subject, atlas, read_labels_from_annotati
             labels = []
             for labels_chunk in results:
                 labels.extend(labels_chunk)
-        utils.save(labels, res_file)
+        try:
+            utils.save(labels, res_file)
+        except:
+            utils.print_last_error_line()
     return labels
 
 
@@ -843,7 +846,7 @@ def get_compact_bipolar_elc_name(elc_name, bipolar, elc_type):
 
 def get_electrodes_orientation(elecs_names, elecs_pos, bipolar, elecs_types, elecs_oris_fname=''):
     if elecs_oris_fname != '':
-        f = np.load(elecs_oris_fname)
+        f = np.load(elecs_oris_fname, allow_pickle=True)
         if 'electrodes_oris' not in f:
             logging.error('elecs oris fname was given, but without the "electrodes_oris" field!')
             raise Exception('elecs oris fname was given, but without the "electrodes_oris" field!')
@@ -1184,8 +1187,7 @@ def run_for_all_subjects(args):
                     read_snap_electrodes(subject, _elecs_names, _elecs_pos, _, args.subjects_dir)
                     continue
                 all_elecs_types[subject] = elecs_types
-                elcs_ori = get_electrodes_orientation(
-                    elecs_names, elecs_pos, bipolar, elecs_types, elecs_oris_fname=args.pos_fname)
+                elcs_ori = get_electrodes_orientation(elecs_names, elecs_pos, bipolar, elecs_types)
                 labels = read_labels_vertices(args.subjects_dir, subject, args.atlas, args.read_labels_from_annotation,
                     args.overwrite_labels_pkl, args.n_jobs)
                 elecs = identify_roi_from_atlas(

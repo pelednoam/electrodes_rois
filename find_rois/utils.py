@@ -193,6 +193,15 @@ def load(fname):
     return obj
 
 
+def print_last_error_line():
+    last_err_line = [l for l in traceback.format_exc().split('\n') if len(l) > 0][-1]
+    try:
+        print(last_err_line)
+        return last_err_line
+    except:
+        return ''
+
+
 class Bag( dict ):
     """ a dict with d.key short for d["key"]
         d = Bag( k=v ... / **dict / dict.items() / [(k,v) ...] )  just like dict
