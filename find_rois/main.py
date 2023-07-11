@@ -60,9 +60,10 @@ def identify_roi_from_atlas(
             asegf = op.join(subjects_dir, subject, 'mri', 'aparc+aseg.mgz')
         try:
             aseg = nib.load(asegf)
-            aseg_data = aseg.get_data()
+            aseg_data = aseg.get_fdata()
             # np.save(op.join(subjects_dir, subject, 'mri', 'aseg.npy'), aseg_data)
         except:
+            utils.print_last_error_line()
             backup_aseg_file = op.join(subjects_dir, subject, 'mri', 'aseg.npy')
             if op.isfile(backup_aseg_file):
                 aseg_data = np.load(backup_aseg_file)

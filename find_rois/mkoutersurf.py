@@ -13,7 +13,7 @@ def mkoutersurf(image, radius, outfile):
     #it is a little tougher to deal with the morphology in python
 
     fill = nib.load( image )
-    filld = fill.get_data()
+    filld = fill.get_fdata()
     filld[filld==1] = 255
 
     gaussian = np.ones((2,2))*.25
