@@ -354,7 +354,7 @@ def electrode_is_only_in_white_matter(regions, subcortical_regions):
 #todo: don't have to calculate the hist if the dist is above some threshold
 def calc_hits_in_neighbors_from_line(line, points, neighb, approx):
     bins = [np.sort(np.unique(neighb[:, idim])) for idim in range(points.shape[1])]
-    hist, bin_edges = np.histogramdd(points, bins=bins, normed=False)
+    hist, bin_edges = np.histogramdd(points, bins=bins)#, normed=False)
     if np.sum(hist > 0) == 0:
         return 0
     else:
