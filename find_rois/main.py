@@ -777,7 +777,7 @@ def write_values(elecs, elecs_types, results_fname, header, rois_arr, rois_names
         logging.error('write_values to {}: {}'.format(results_fname, traceback.format_exc()))
         print(traceback.format_exc())
 
-    return np.array(file_data).astype(np.float)
+    return np.array(file_data).astype(float)
 
 
 def most_probable_rois_and_electrodes(subject, elecs, results_fname_csv, elecs_types, bipolar, args):
