@@ -306,7 +306,9 @@ def read_labels_vertices(subjects_dir, subject, atlas, read_labels_from_annotati
         labels = utils.load(res_file)
     else:
         if read_labels_from_annotation:
-            annot_labels = mne.read_labels_from_annot(subject, atlas)
+            # annot_labels = mne.read_labels_from_annot(subject, atlas)
+            annot_labels = lu.read_labels(
+                subject, subjects_dir, atlas, remove_unknown=True, n_jobs=n_jobs)
             labels = list([{'name': label.name, 'hemi': label.hemi, 'vertices': label.vertices}
                            for label in annot_labels])
         else:
